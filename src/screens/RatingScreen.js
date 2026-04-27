@@ -11,17 +11,8 @@ import {
   TextInput,
   ActivityIndicator,
 } from "react-native";
-
-import { auth, db } from "../firebase/config";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  doc,
-  query,
-  where,
-} from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
 const C = {
   navy:   "#0f1f3d",
@@ -58,20 +49,16 @@ function CourseCard({ item, selected, onPress }) {
       activeOpacity={0.8}
     >
       <View style={{ flex: 1 }}>
-        
         <Text style={styles.courseTitle}>{item.courseName}</Text>
-
         <View style={styles.courseMetaRow}>
-       
           <View style={styles.codeBadge}>
             <Text style={styles.codeBadgeText}>{item.courseCode}</Text>
           </View>
           <Text style={styles.courseLecturer}>
-            {item.lecturerUsername || item.lecturerName || item.username || "No lecturer"}
+            {item.lecturerName || "No lecturer"}
           </Text>
         </View>
       </View>
-
       {selected && (
         <View style={styles.checkCircle}>
           <Text style={styles.checkMark}>✓</Text>
@@ -100,11 +87,9 @@ function RatingCard({ item, showLecturer = false }) {
   return (
     <View style={styles.ratingCard}>
       <View style={styles.ratingTop}>
-      
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
-
         <View style={{ flex: 1 }}>
           <Text style={styles.studentName}>
             {item.studentName || "Student"}
@@ -114,13 +99,11 @@ function RatingCard({ item, showLecturer = false }) {
             {item.courseName}
           </Text>
         </View>
-
         <View style={styles.ratingBadge}>
           <Text style={styles.ratingBadgeNum}>{item.rating}</Text>
           <Text style={styles.ratingBadgeStar}>★</Text>
         </View>
       </View>
-
 
       <View style={styles.miniStarRow}>
         {[1, 2, 3, 4, 5].map((n) => (
@@ -175,114 +158,113 @@ function AverageBlock({ average, count }) {
 function SectionLabel({ text }) {
   return <Text style={styles.label}>{text}</Text>;
 }
+
 export default function RatingScreen() {
-  const user = auth.currentUser;
-
-  const [role, setRole]                     = useState(null);
-  const [loading, setLoading]               = useState(true);
-  const [courses, setCourses]               = useState([]);
+  const [role, setRole] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [ratings, setRatings]               = useState([]);
-  const [rating, setRating]                 = useState(0);
-  const [comment, setComment]               = useState("");
-  const [submitting, setSubmitting]         = useState(false);
+  const [ratings, setRatings] = useState([]);
+  const [myRatings, setMyRatings] = useState([]);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        const userData = userSnap.data();
-        setRole(userData?.role);
+  // Get user role from storage
+  const getUserRole = async () => {
+    const userRole = await AsyncStorage.getItem("user_role");
+    setRole(userRole);
+    return userRole;
+  };
 
-        const ratingSnap = await getDocs(collection(db, "ratings"));
-        setRatings(
-          ratingSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        );
-
-       
-        if (userData?.role === "student" && userData?.classId) {
-          const courseQ = query(
-            collection(db, "courses"),
-            where("classId", "==", userData.classId)
-          );
-          const courseSnap = await getDocs(courseQ);
-
-          const loadedCourses = courseSnap.docs.map((d) => {
-            const data = d.data();
-
-            console.log("COURSE DOC:", JSON.stringify(data));
-
-            const lecturerUsername =
-              data.lecturerUsername ||
-              data.lecturerName     ||
-              data.username         ||
-              data.displayName      ||
-              data.lecturer         ||
-              "Unknown Lecturer";
-
-            return { id: d.id, ...data, lecturerUsername };
-          });
-
-          console.log("Total courses loaded:", loadedCourses.length);
-          setCourses(loadedCourses);
-        }
-      } catch (e) {
-        Alert.alert("Error", e.message);
-      } finally {
-        setLoading(false);
+  // Load courses for student
+  const loadCourses = async () => {
+    try {
+      const response = await api.get("/courses");
+      if (response.data.success) {
+        setCourses(response.data.courses);
       }
-    };
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load courses");
+    }
+  };
 
-    load();
-  }, []);
+  // Load all ratings (for PRL/PL)
+  const loadAllRatings = async () => {
+    try {
+      const response = await api.get("/ratings/all");
+      if (response.data.success) {
+        setRatings(response.data.ratings);
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load ratings");
+    }
+  };
 
+  // Load student's own ratings
+  const loadMyRatings = async () => {
+    try {
+      const response = await api.get("/ratings/mine");
+      if (response.data.success) {
+        setMyRatings(response.data.ratings);
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load your ratings");
+    }
+  };
 
   const submitRating = async () => {
-    if (!selectedCourse)
+    if (!selectedCourse) {
       return Alert.alert("Select Course", "Please choose a course first.");
-    if (!rating)
+    }
+    if (!rating) {
       return Alert.alert("Rating Required", "Please select a star rating.");
+    }
 
     setSubmitting(true);
     try {
-      await addDoc(collection(db, "ratings"), {
-        studentId:    user.uid,
-        studentName:  user.displayName || "Student",
-
-        
-        lecturerId:   selectedCourse.lecturerId,
-        lecturerName: selectedCourse.lecturerUsername, 
-        courseName:   selectedCourse.courseName,         
-        courseCode:   selectedCourse.courseCode,
-        classId:      selectedCourse.classId,
-        className:    selectedCourse.className,
-
+      const payload = {
+        lecturerId: selectedCourse.lecturerId,
+        lecturerName: selectedCourse.lecturerName,
+        courseName: selectedCourse.courseName,
+        courseCode: selectedCourse.courseCode,
+        classId: selectedCourse.classId,
+        className: selectedCourse.className,
         rating,
-        comment:   comment.trim(),
-        createdAt: new Date().toISOString(),
-      });
+        comment: comment.trim()
+      };
 
-      Alert.alert("Success", "Rating submitted successfully.");
-      setSelectedCourse(null);
-      setRating(0);
-      setComment("");
-    } catch (e) {
-      Alert.alert("Error", e.message);
+      const response = await api.post("/ratings", payload);
+      if (response.data.success) {
+        Alert.alert("Success", "Rating submitted successfully.");
+        setSelectedCourse(null);
+        setRating(0);
+        setComment("");
+        await loadMyRatings();
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to submit rating");
     } finally {
       setSubmitting(false);
     }
   };
 
-  
-  const lecturerRatings = ratings.filter((r) => r.lecturerId === user.uid);
-  const average =
-    lecturerRatings.length > 0
-      ? (
-          lecturerRatings.reduce((a, b) => a + b.rating, 0) /
-          lecturerRatings.length
-        ).toFixed(1)
-      : null;
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      const userRole = await getUserRole();
+      
+      if (userRole === "student") {
+        await loadCourses();
+        await loadMyRatings();
+      } else if (userRole === "prl" || userRole === "pl") {
+        await loadAllRatings();
+      }
+      
+      setLoading(false);
+    };
+    init();
+  }, []);
 
   if (loading) {
     return (
@@ -292,16 +274,19 @@ export default function RatingScreen() {
     );
   }
 
- 
+  // ========== STUDENT VIEW ==========
   if (role === "student") {
+    const average = myRatings.length > 0
+      ? (myRatings.reduce((sum, r) => sum + r.rating, 0) / myRatings.length).toFixed(1)
+      : null;
+
     return (
       <SafeAreaView style={styles.container}>
-      
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Feedback</Text>
           <Text style={styles.headerTitle}>Rate Your Lecturer</Text>
           <Text style={styles.headerSub}>
-            Choose a course from your class below
+            Choose a course and share your feedback
           </Text>
         </View>
 
@@ -309,30 +294,21 @@ export default function RatingScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-        
           <SectionLabel text="Available Courses" />
 
           {courses.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No courses found for your class.
-            </Text>
+            <Text style={styles.emptyText}>No courses found.</Text>
           ) : (
-            <FlatList
-              data={courses}
-              scrollEnabled={false}
-              keyExtractor={(item) => item.id}
-              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-              renderItem={({ item }) => (
-                <CourseCard
-                  item={item}
-                  selected={selectedCourse?.id === item.id}
-                  onPress={() => setSelectedCourse(item)}
-                />
-              )}
-            />
+            courses.map((item) => (
+              <CourseCard
+                key={item.id}
+                item={item}
+                selected={selectedCourse?.id === item.id}
+                onPress={() => setSelectedCourse(item)}
+              />
+            ))
           )}
 
-       
           {selectedCourse && (
             <View style={styles.selectedSummary}>
               <Text style={styles.selectedSummaryLabel}>Selected</Text>
@@ -340,12 +316,11 @@ export default function RatingScreen() {
                 {selectedCourse.courseName}
               </Text>
               <Text style={styles.selectedSummaryMeta}>
-                Lecturer: {selectedCourse.lecturerUsername || selectedCourse.lecturerName || selectedCourse.username || "Unknown"}
+                Lecturer: {selectedCourse.lecturerName || "Unknown"}
               </Text>
             </View>
           )}
 
-       
           <SectionLabel text="Your Rating" />
           <View style={styles.starCard}>
             <StarPicker value={rating} onChange={setRating} />
@@ -363,7 +338,6 @@ export default function RatingScreen() {
             textAlignVertical="top"
           />
 
-        
           <TouchableOpacity
             style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
             onPress={submitRating}
@@ -374,66 +348,120 @@ export default function RatingScreen() {
               {submitting ? "Submitting…" : "Submit Rating"}
             </Text>
           </TouchableOpacity>
+
+          {myRatings.length > 0 && (
+            <>
+              <SectionLabel text="Your Previous Ratings" />
+              <AverageBlock average={average} count={myRatings.length} />
+              {myRatings.map((item) => (
+                <RatingCard key={item.id} item={item} showLecturer />
+              ))}
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  if (role === "lecturer") {
+  // ========== PRL / PL VIEW ==========
+  if (role === "prl" || role === "pl") {
+    // Calculate average rating across all lecturers
+    const totalRatings = ratings.length;
+    const averageRating = totalRatings > 0
+      ? (ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings).toFixed(1)
+      : null;
+    
+    // Group ratings by lecturer
+    const lecturerRatings = {};
+    ratings.forEach(r => {
+      if (!lecturerRatings[r.lecturerId]) {
+        lecturerRatings[r.lecturerId] = {
+          name: r.lecturerName,
+          ratings: [],
+          count: 0,
+          total: 0
+        };
+      }
+      lecturerRatings[r.lecturerId].ratings.push(r);
+      lecturerRatings[r.lecturerId].count++;
+      lecturerRatings[r.lecturerId].total += r.rating;
+    });
+    
+    // Calculate average per lecturer
+    Object.keys(lecturerRatings).forEach(id => {
+      lecturerRatings[id].average = (lecturerRatings[id].total / lecturerRatings[id].count).toFixed(1);
+    });
+
+    const roleTitle = role === "prl" ? "PRL Portal" : "Programme Leader";
+    const roleSub = role === "prl" 
+      ? "View all lecturer ratings and feedback" 
+      : "Complete overview of lecturer performance";
+
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>Feedback Overview</Text>
-          <Text style={styles.headerTitle}>My Ratings</Text>
-          <Text style={styles.headerSub}>Feedback from your students</Text>
+          <Text style={styles.eyebrow}>{roleTitle}</Text>
+          <Text style={styles.headerTitle}>All Ratings</Text>
+          <Text style={styles.headerSub}>{roleSub}</Text>
         </View>
 
-        <FlatList
-          data={lecturerRatings}
-          keyExtractor={(item) => item.id}
+        <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            average !== null ? (
-              <AverageBlock average={average} count={lecturerRatings.length} />
-            ) : null
-          }
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item }) => <RatingCard item={item} />}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No ratings yet.</Text>
-          }
-        />
+        >
+          {/* Overall Stats */}
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{totalRatings}</Text>
+              <Text style={styles.statLabel}>Total Ratings</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{averageRating || 0}</Text>
+              <Text style={styles.statLabel}>Average Rating</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{Object.keys(lecturerRatings).length}</Text>
+              <Text style={styles.statLabel}>Lecturers Rated</Text>
+            </View>
+          </View>
+
+          {/* Lecturer Summary Cards */}
+          <SectionLabel text="Lecturer Performance Summary" />
+          {Object.keys(lecturerRatings).map(id => (
+            <View key={id} style={styles.lecturerSummaryCard}>
+              <Text style={styles.lecturerName}>{lecturerRatings[id].name}</Text>
+              <View style={styles.lecturerStats}>
+                <Text style={styles.lecturerStat}>
+                  ⭐ {lecturerRatings[id].average} / 5
+                </Text>
+                <Text style={styles.lecturerStat}>
+                  📝 {lecturerRatings[id].count} reviews
+                </Text>
+              </View>
+            </View>
+          ))}
+
+          {/* All Individual Ratings */}
+          <SectionLabel text="All Individual Ratings" />
+          {ratings.length === 0 ? (
+            <Text style={styles.emptyText}>No ratings found.</Text>
+          ) : (
+            ratings.map((item) => (
+              <RatingCard key={item.id} item={item} showLecturer />
+            ))
+          )}
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
-  
+  // Fallback
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>System Overview</Text>
-        <Text style={styles.headerTitle}>All Ratings</Text>
-        <Text style={styles.headerSub}>
-          Complete feedback across all lecturers
-        </Text>
-      </View>
-
-      <FlatList
-        data={ratings}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        renderItem={({ item }) => <RatingCard item={item} showLecturer />}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>No ratings found.</Text>
-        }
-      />
-    </SafeAreaView>
+    <View style={styles.centered}>
+      <ActivityIndicator size="large" color={C.navy} />
+    </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
@@ -464,9 +492,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
   },
 
- 
   content: { padding: 16, paddingBottom: 40 },
-
 
   label: {
     fontSize: 11,
@@ -478,7 +504,52 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  // Course card
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 20,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: C.white,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.6)",
+    marginTop: 4,
+  },
+
+  lecturerSummaryCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+  },
+  lecturerName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 8,
+  },
+  lecturerStats: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  lecturerStat: {
+    fontSize: 13,
+    color: C.muted,
+  },
+
   courseCard: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -487,6 +558,7 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 10,
   },
   courseCardSelected: {
     borderColor: C.navy,
@@ -556,7 +628,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
   },
 
-  
   starCard: {
     backgroundColor: C.card,
     borderRadius: 12,
@@ -597,13 +668,13 @@ const styles = StyleSheet.create({
 
   emptyText: { color: C.muted, marginTop: 10, marginBottom: 20, fontSize: 13 },
 
-
   ratingCard: {
     backgroundColor: C.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: C.border,
     padding: 16,
+    marginBottom: 10,
   },
   ratingTop: {
     flexDirection: "row",

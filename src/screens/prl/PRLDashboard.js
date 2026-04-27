@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -6,20 +6,84 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
-import { signOut } from "firebase/auth";
-import { auth } from "../../firebase/config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../../services/api";
 
 export default function PRLDashboard({ navigation }) {
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    courses: 0,
+    lecturers: 0,
+    pendingReports: 0,
+    reviewedReports: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  const logout = async () => {
-    await signOut(auth);
-    navigation.replace("Login");
+  const fetchStats = async () => {
+    try {
+      // Try to get real stats from API
+      const response = await api.get("/prl/stats");
+      if (response.data.success) {
+        setStats(response.data.stats);
+      }
+    } catch (error) {
+      console.log("PRL stats endpoint not available, loading local data");
+      await loadLocalStats();
+    } finally {
+      setStatsLoading(false);
+    }
   };
 
-  // =========================
-  // NAV CARD
-  // =========================
+  const loadLocalStats = async () => {
+    try {
+      // Get courses count
+      const coursesRes = await api.get("/courses");
+      const coursesCount = coursesRes.data.success ? coursesRes.data.courses.length : 0;
+      
+      // Get unique lecturers from courses
+      const lecturers = new Set();
+      if (coursesRes.data.success) {
+        coursesRes.data.courses.forEach(course => {
+          if (course.lecturerId) lecturers.add(course.lecturerId);
+        });
+      }
+      
+      // Get reports
+      const reportsRes = await api.get("/reports");
+      const reports = reportsRes.data.success ? reportsRes.data.reports : [];
+      const pending = reports.filter(r => r.status === "pending").length;
+      const reviewed = reports.filter(r => r.status === "reviewed").length;
+      
+      setStats({
+        courses: coursesCount,
+        lecturers: lecturers.size,
+        pendingReports: pending,
+        reviewedReports: reviewed,
+      });
+    } catch (error) {
+      console.log("Failed to load local stats");
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const logout = async () => {
+    setLoading(true);
+    try {
+      await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
+      navigation.replace("Login");
+    } catch (error) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const NavCard = ({ title, subtitle, route, accent, isLogout }) => (
     <TouchableOpacity
       style={[styles.card, { borderLeftColor: accent }, isLogout && styles.logoutCard]}
@@ -36,11 +100,19 @@ export default function PRLDashboard({ navigation }) {
     </TouchableOpacity>
   );
 
+  if (statsLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#16a34a" />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <StatusBar barStyle="light-content" />
 
-      {/* ── HEADER ── */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.avatar}>
@@ -54,9 +126,31 @@ export default function PRLDashboard({ navigation }) {
             <Text style={styles.badgeText}>Supervisor</Text>
           </View>
         </View>
+
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.courses}</Text>
+            <Text style={styles.statLabel}>Courses</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{stats.lecturers}</Text>
+            <Text style={styles.statLabel}>Lecturers</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: "#fbbf24" }]}>{stats.pendingReports}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: "#4ade80" }]}>{stats.reviewedReports}</Text>
+            <Text style={styles.statLabel}>Reviewed</Text>
+          </View>
+        </View>
       </View>
 
-      {/* ── MODULES ── */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>MODULES</Text>
 
@@ -86,7 +180,6 @@ export default function PRLDashboard({ navigation }) {
         />
       </View>
 
-      {/* ── LOGOUT ── */}
       <View style={styles.section}>
         <NavCard
           title="Logout"
@@ -94,22 +187,26 @@ export default function PRLDashboard({ navigation }) {
           isLogout
         />
       </View>
-
     </ScrollView>
   );
 }
 
-// =========================
-// STYLES
-// =========================
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: "#070b18",
   },
-
-  // ── Header
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#070b18",
+  },
+  loadingText: {
+    color: "#64748b",
+    fontSize: 14,
+    marginTop: 10,
+  },
   header: {
     backgroundColor: "#0f172a",
     padding: 20,
@@ -125,6 +222,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    marginBottom: 16,
   },
   avatar: {
     width: 44,
@@ -166,8 +264,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
-
-  // ── Section
+  statsRow: {
+    flexDirection: "row",
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#ffffff",
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: "#334155",
+    marginVertical: 4,
+  },
   section: {
     paddingHorizontal: 16,
     paddingTop: 10,
@@ -180,8 +304,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     marginBottom: 10,
   },
-
-  // ── Nav card
   card: {
     backgroundColor: "#0f172a",
     borderWidth: 0.5,
@@ -213,8 +335,6 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     marginLeft: 8,
   },
-
-  // ── Logout
   logoutCard: {
     backgroundColor: "#1c0a0a",
     borderColor: "#7f1d1d",

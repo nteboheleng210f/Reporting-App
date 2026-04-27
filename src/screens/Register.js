@@ -6,164 +6,361 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  SafeAreaView,
+  StatusBar,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
+import authService from "../services/authService";
 
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "../firebase/config";
-import { doc, setDoc } from "firebase/firestore";
+const C = {
+  navy:   "#0f1f3d",
+  navy2:  "#1a2f52",
+  gold:   "#c9a84c",
+  white:  "#ffffff",
+  bg:     "#f5f7fb",
+  card:   "#ffffff",
+  border: "#e4e8f0",
+  text:   "#102040",
+  muted:  "#6c7a96",
+  badge:  "#edf0f7",
+};
+
+function Field({ label, value, onChangeText, placeholder, keyboardType, secure, autoCapitalize }) {
+  return (
+    <View style={s.field}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <TextInput
+        style={s.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || ""}
+        placeholderTextColor={C.muted}
+        keyboardType={keyboardType || "default"}
+        secureTextEntry={secure || false}
+        autoCapitalize={autoCapitalize || "sentences"}
+      />
+    </View>
+  );
+}
+
+function FormSection({ title }) {
+  return (
+    <View style={s.formSection}>
+      <Text style={s.formSectionText}>{title}</Text>
+      <View style={s.formSectionLine} />
+    </View>
+  );
+}
 
 export default function RegisterScreen({ navigation }) {
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState(""); 
-  const [role, setRole] = useState("student");
-  const [loading, setLoading] = useState(false);
+  const [username, setUsername]               = useState("");
+  const [email, setEmail]                     = useState("");
+  const [phone, setPhone]                     = useState("");
+  const [password, setPassword]               = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole]                       = useState("student");
+  const [loading, setLoading]                 = useState(false);
+
+  const roles = [
+    { key: "student",  label: "Student"  },
+    { key: "lecturer", label: "Lecturer" },
+    { key: "prl",      label: "PRL"      },
+    { key: "pl",       label: "PL"       },
+  ];
 
   const register = async () => {
+    // Validation
     if (!username || !email || !password || !phone || !confirmPassword) {
-      alert("Please fill all fields");
+      Alert.alert("Error", "Please fill all fields.");
       return;
     }
 
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      Alert.alert("Error", "Passwords do not match.");
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert("Error", "Password should be at least 6 characters.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const userCred = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
-
-      await setDoc(doc(db, "users", userCred.user.uid), {
-        username: username.trim(),
-        email: email.trim(),
-        phone: phone.trim(), 
+      const result = await authService.register({
+        username,
+        email,
+        phone,
+        password,
         role,
-        createdAt: new Date().toISOString(),
       });
 
-      alert("Account created successfully!");
-      navigation.replace("Login");
-    } catch (error) {
-      switch (error.code) {
-        case "auth/email-already-in-use":
-          alert("This email is already registered.");
-          break;
-        case "auth/invalid-email":
-          alert("Invalid email format.");
-          break;
-        case "auth/weak-password":
-          alert("Password must be at least 6 characters.");
-          break;
-        default:
-          alert(error.message);
+      if (result.success) {
+        Alert.alert(
+          "Success", 
+          "Account created successfully!",
+          [{ text: "OK", onPress: () => navigation.replace("Login") }]
+        );
+      } else {
+        Alert.alert("Registration Failed", result.error);
       }
+    } catch (error) {
+      Alert.alert("Error", "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Sign Up</Text>
-          <Text style={styles.subtitle}>Create your account</Text>
+    <SafeAreaView style={s.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-          <TextInput
-            placeholder="Username"
-            style={styles.input}
+      <View style={s.header}>
+        <Text style={s.eyebrow}>University Portal</Text>
+        <Text style={s.headerTitle}>Create Account</Text>
+        <Text style={s.headerSub}>Register to access the academic system</Text>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={s.body}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={s.formCard}>
+          <FormSection title="Personal Information" />
+
+          <Field
+            label="Full Name"
+            value={username}
             onChangeText={setUsername}
+            placeholder="e.g. Lerato Mokhosi"
           />
 
-          <TextInput
-            placeholder="Email"
-            style={styles.input}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            onChangeText={setEmail}
-          />
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={{ width: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Phone"
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="+266 5000 0000"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
 
-      
-          <TextInput
-            placeholder="Phone Number"
-            style={styles.input}
-            keyboardType="phone-pad"
-            onChangeText={setPhone}
-          />
+          <FormSection title="Security" />
 
-          <TextInput
-            placeholder="Password"
-            secureTextEntry
-            style={styles.input}
-            onChangeText={setPassword}
-          />
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Min. 6 characters"
+                secure
+              />
+            </View>
+            <View style={{ width: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Repeat password"
+                secure
+              />
+            </View>
+          </View>
 
-          <TextInput
-            placeholder="Confirm Password"
-            secureTextEntry
-            style={styles.input}
-            onChangeText={setConfirmPassword}
-          />
+          <FormSection title="Role" />
 
-          <Text style={styles.label}>Role</Text>
-          <View style={styles.roleContainer}>
-            {["student", "lecturer", "prl", "pl"].map((r) => (
+          <View style={s.roleRow}>
+            {roles.map((r) => (
               <TouchableOpacity
-                key={r}
-                style={[
-                  styles.roleButton,
-                  role === r && styles.activeRole,
-                ]}
-                onPress={() => setRole(r)}
+                key={r.key}
+                style={[s.roleBtn, role === r.key && s.roleBtnActive]}
+                onPress={() => setRole(r.key)}
+                activeOpacity={0.8}
               >
-                <Text style={styles.roleText}>{r.toUpperCase()}</Text>
+                <Text style={[s.roleBtnText, role === r.key && s.roleBtnTextActive]}>
+                  {r.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
 
           <TouchableOpacity
-            style={[styles.button, loading && { opacity: 0.7 }]}
+            style={[s.submitBtn, loading && { opacity: 0.6 }]}
             onPress={register}
             disabled={loading}
+            activeOpacity={0.85}
           >
-            <Text style={styles.buttonText}>
-              {loading ? "Please wait..." : "Register"}
-            </Text>
+            {loading ? (
+              <ActivityIndicator color={C.white} />
+            ) : (
+              <Text style={s.submitText}>Register</Text>
+            )}
           </TouchableOpacity>
 
-          <Text
-            style={styles.link}
+          <TouchableOpacity
+            style={s.loginLink}
             onPress={() => navigation.navigate("Login")}
           >
-            Already have an account? Login
-          </Text>
+            <Text style={s.loginLinkText}>
+              Already have an account?{" "}
+              <Text style={s.loginLinkBold}>Sign in</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#eef2f7" },
-  scroll: { flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 20 },
-  card: { width: "100%", backgroundColor: "#fff", padding: 25, borderRadius: 20, elevation: 8 },
-  title: { fontSize: 26, fontWeight: "bold", textAlign: "center", color: "#273c75" },
-  subtitle: { textAlign: "center", color: "#777", marginBottom: 20 },
-  input: { backgroundColor: "#f5f6fa", padding: 12, borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: "#ddd" },
-  label: { marginBottom: 10, fontWeight: "600", color: "#333" },
-  roleContainer: { flexDirection: "row", justifyContent: "space-between", marginBottom: 20 },
-  roleButton: { flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 10, backgroundColor: "#dcdde1", alignItems: "center" },
-  activeRole: { backgroundColor: "#273c75" },
-  roleText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
-  button: { backgroundColor: "#273c75", padding: 15, borderRadius: 10, alignItems: "center", marginTop: 10 },
-  buttonText: { color: "#fff", fontWeight: "bold" },
-  link: { marginTop: 15, textAlign: "center", color: "#40739e" },
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.bg },
+
+  header: {
+    backgroundColor: C.navy,
+    paddingTop: 52,
+    paddingBottom: 28,
+    paddingHorizontal: 24,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: C.white,
+    marginBottom: 4,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
+  },
+
+  body: { padding: 16, paddingBottom: 48 },
+
+  formCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 16,
+  },
+
+  row: { flexDirection: "row" },
+
+  formSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 12,
+    gap: 10,
+  },
+  formSectionText: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    color: C.navy,
+    textTransform: "uppercase",
+    flexShrink: 0,
+  },
+  formSectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: C.border,
+  },
+
+  field: { marginBottom: 14 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.text,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: C.text,
+  },
+
+  roleRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  roleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.bg,
+    alignItems: "center",
+  },
+  roleBtnActive: {
+    backgroundColor: C.navy,
+    borderColor: C.navy,
+  },
+  roleBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.muted,
+  },
+  roleBtnTextActive: {
+    color: C.white,
+  },
+
+  submitBtn: {
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  submitText: {
+    color: C.white,
+    fontWeight: "700",
+    fontSize: 14,
+    letterSpacing: 0.4,
+  },
+
+  loginLink: {
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  loginLinkText: {
+    fontSize: 13,
+    color: C.muted,
+  },
+  loginLinkBold: {
+    color: C.navy,
+    fontWeight: "700",
+  },
 });

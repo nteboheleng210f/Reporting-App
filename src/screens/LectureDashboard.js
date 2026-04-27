@@ -5,46 +5,56 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
-
 import { useFocusEffect } from "@react-navigation/native";
-import { signOut } from "firebase/auth";
-import { auth, db } from "../firebase/config";
-import { collection, getDocs } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
 export default function LecturerDashboard({ navigation }) {
-  const user = auth.currentUser;
-
   const [stats, setStats] = useState({
     courses: 0,
     classes: 0,
     reports: 0,
   });
+  const [loading, setLoading] = useState(true);
 
-  
   const loadData = async () => {
     try {
-      const courseSnap = await getDocs(collection(db, "courses"));
-      const reportSnap = await getDocs(collection(db, "lectureReports"));
-
-      const myCourses = courseSnap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(c => c.lecturerId === user.uid);
-
-      const myClasses = new Set(myCourses.map(c => c.classId));
-
-      const myReports = reportSnap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(r => r.lecturerId === user.uid);
-
-      setStats({
-        courses: myCourses.length,
-        classes: myClasses.size,
-        reports: myReports.length,
-      });
-
+      // Try to get real stats from API
+      const response = await api.get("/dashboard/lecturer");
+      if (response.data.success) {
+        setStats(response.data.stats);
+      }
     } catch (error) {
-      console.log(error.message);
+      // If API fails, load stats from local data
+      console.log("Using local stats fallback");
+      await loadLocalStats();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadLocalStats = async () => {
+    try {
+      // Get courses count
+      const coursesRes = await api.get("/courses");
+      if (coursesRes.data.success) {
+        const coursesCount = coursesRes.data.courses.length;
+        
+        // Get reports count
+        const reportsRes = await api.get("/reports");
+        const reportsCount = reportsRes.data.success ? reportsRes.data.reports.length : 0;
+        
+        setStats({
+          courses: coursesCount,
+          classes: coursesCount, // approximate
+          reports: reportsCount,
+        });
+      }
+    } catch (error) {
+      console.log("Failed to load local stats");
     }
   };
 
@@ -52,16 +62,14 @@ export default function LecturerDashboard({ navigation }) {
     loadData();
   }, []);
 
- 
   useFocusEffect(
     useCallback(() => {
       loadData();
     }, [])
   );
 
-
   const logout = async () => {
-    await signOut(auth);
+    await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
     navigation.replace("Login");
   };
 
@@ -86,13 +94,20 @@ export default function LecturerDashboard({ navigation }) {
     </View>
   );
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}></Text>
+            <Text style={styles.avatarText}>L</Text>
           </View>
 
           <View>
@@ -107,14 +122,13 @@ export default function LecturerDashboard({ navigation }) {
 
         <View style={styles.divider} />
 
-         <View style={styles.statsRow}>
+        <View style={styles.statsRow}>
           <StatBox value={stats.courses} label="My Courses" bg="#E6F1FB" />
           <StatBox value={stats.classes} label="Classes" bg="#EEEDFE" />
           <StatBox value={stats.reports} label="Reports" bg="#E1F5EE" />
         </View>
       </View>
 
-     
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>NAVIGATION</Text>
 
@@ -154,13 +168,11 @@ export default function LecturerDashboard({ navigation }) {
         />
       </View>
 
-    
       <View style={styles.section}>
         <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
-
     </ScrollView>
   );
 }
@@ -170,7 +182,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0f172a",
   },
-
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
+  },
   header: {
     backgroundColor: "#111827",
     padding: 20,
@@ -180,14 +197,12 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     marginBottom: 8,
   },
-
   headerTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginBottom: 18,
   },
-
   avatar: {
     width: 42,
     height: 42,
@@ -196,25 +211,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   avatarText: {
     color: "#93c5fd",
     fontSize: 14,
     fontWeight: "600",
   },
-
   portalTitle: {
     color: "#f1f5f9",
     fontSize: 17,
     fontWeight: "700",
   },
-
   portalSub: {
     color: "#64748b",
     fontSize: 12,
     marginTop: 2,
   },
-
   activeBadge: {
     marginLeft: "auto",
     backgroundColor: "#14532d",
@@ -224,24 +235,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#166534",
   },
-
   activeBadgeText: {
     color: "#86efac",
     fontSize: 11,
     fontWeight: "600",
   },
-
   divider: {
     height: 1,
     backgroundColor: "#1e293b",
     marginBottom: 16,
   },
-
   statsRow: {
     flexDirection: "row",
     gap: 10,
   },
-
   statBox: {
     flex: 1,
     borderRadius: 10,
@@ -249,25 +256,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     alignItems: "center",
   },
-
   statNum: {
     fontSize: 22,
     fontWeight: "700",
     color: "#0f172a",
   },
-
   statLabel: {
     fontSize: 11,
     color: "#334155",
     marginTop: 3,
   },
-
   section: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 4,
   },
-
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
@@ -275,7 +278,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     marginBottom: 10,
   },
-
   navCard: {
     backgroundColor: "#1e293b",
     borderRadius: 12,
@@ -285,28 +287,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-
   navCardInner: {
     flex: 1,
   },
-
   navCardTitle: {
     color: "#f1f5f9",
     fontSize: 15,
     fontWeight: "600",
   },
-
   navCardSub: {
     color: "#64748b",
     fontSize: 12,
     marginTop: 3,
   },
-
   navArrow: {
     color: "#475569",
     fontSize: 22,
   },
-
   logoutBtn: {
     backgroundColor: "#1c0a0a",
     borderWidth: 1,
@@ -317,7 +314,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     marginTop: 4,
   },
-
   logoutText: {
     color: "#fca5a5",
     fontSize: 14,

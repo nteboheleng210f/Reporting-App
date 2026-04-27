@@ -7,18 +7,9 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
-import { auth, db } from "../firebase/config";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
-
-/* ─────────────────────────────────────────────
-   COLORS  (same token set as RatingScreen)
-───────────────────────────────────────────── */
 const C = {
   navy:   "#0f1f3d",
   navy2:  "#1a2f52",
@@ -38,9 +29,6 @@ const C = {
   amberBg:"#fef3c7",
 };
 
-/* ─────────────────────────────────────────────
-   HELPERS
-───────────────────────────────────────────── */
 function fmtDate(str) {
   if (!str) return "";
   const d = new Date(str);
@@ -55,22 +43,23 @@ function pct(present, total) {
   return Math.round((present / total) * 100);
 }
 
-/* ─────────────────────────────────────────────
-   STAT CARD  — centred value, no left metric
-───────────────────────────────────────────── */
-function StatCard({ label, value, sub, accent }) {
+function StatItem({ label, value, color }) {
   return (
-    <View style={[styles.statCard, accent && { borderTopColor: accent, borderTopWidth: 3 }]}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, accent && { color: accent }]}>{value}</Text>
-      {!!sub && <Text style={styles.statSub}>{sub}</Text>}
+    <View style={styles.statItem}>
+      <Text style={[styles.statNum, color && { color }]}>{value}</Text>
+      <Text style={styles.statMeta}>{label}</Text>
     </View>
   );
 }
 
-/* ─────────────────────────────────────────────
-   ATTENDANCE ROW  — one lecture
-───────────────────────────────────────────── */
+function StatStrip({ children }) {
+  return <View style={styles.statStrip}>{children}</View>;
+}
+
+function StatDivider() {
+  return <View style={styles.statDivider} />;
+}
+
 function AttendanceRow({ report, present }) {
   const color  = present ? C.green : C.red;
   const bgCol  = present ? C.greenBg : C.redBg;
@@ -94,9 +83,6 @@ function AttendanceRow({ report, present }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   REPORT ROW  — one lecture report (admin/prl)
-───────────────────────────────────────────── */
 function ReportRow({ item }) {
   const attPct = pct(
     Number(item.actualPresent || 0),
@@ -126,100 +112,98 @@ function ReportRow({ item }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   SECTION LABEL
-───────────────────────────────────────────── */
 function SectionLabel({ text }) {
   return <Text style={styles.sectionLabel}>{text}</Text>;
 }
 
-/* ─────────────────────────────────────────────
-   HEADER BANNER
-───────────────────────────────────────────── */
 function Header({ eyebrow, title, sub }) {
   return (
     <View style={styles.header}>
       <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.headerTitle}>{title}</Text>
-      {!!sub && <Text style={styles.headerSub}>{sub}</Text>}
+      {sub && <Text style={styles.headerSub}>{sub}</Text>}
     </View>
   );
 }
 
-/* ─────────────────────────────────────────────
-   MAIN SCREEN
-───────────────────────────────────────────── */
 export default function MonitoringScreen() {
-  const user = auth.currentUser;
-
-  const [role, setRole]       = useState(null);
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [me, setMe]           = useState(null);
+  const [reports, setReports] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [myReports, setMyReports] = useState([]);
+  const [courses, setCourses] = useState([]);
 
-  // Student
-  const [myAttendance, setMyAttendance]   = useState([]);  // attendance docs for this student
-  const [classReports, setClassReports]   = useState([]);  // lectureReports for this class
+  // Get user role from storage
+  const getUserRole = async () => {
+    const userRole = await AsyncStorage.getItem("user_role");
+    setRole(userRole);
+    return userRole;
+  };
 
-  // Lecturer
-  const [myReports, setMyReports]         = useState([]);
-
-  // PRL / PL
-  const [allReports, setAllReports]       = useState([]);
-  const [allUsers, setAllUsers]           = useState([]);
-
-  /* ───────────────────────────────────────────
-     LOAD DATA
-  ─────────────────────────────────────────── */
-  useEffect(() => {
-    const load = async () => {
-      try {
-        // 1. All users (needed for role + PL/PRL views)
-        const usersSnap = await getDocs(collection(db, "users"));
-        const users     = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setAllUsers(users);
-
-        const meDoc = users.find((u) => u.id === user.uid);
-        setMe(meDoc);
-        setRole(meDoc?.role || "student");
-
-        // 2. All lecture reports
-        const reportsSnap = await getDocs(collection(db, "lectureReports"));
-        const reports     = reportsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setAllReports(reports);
-
-        if (meDoc?.role === "lecturer") {
-          setMyReports(reports.filter((r) => r.lecturerId === user.uid));
+  // Load data based on role
+  const loadData = async () => {
+    const userRole = await getUserRole();
+    
+    try {
+      if (userRole === "student") {
+        // Student: load attendance records
+        const attendanceRes = await api.get("/attendance/student");
+        if (attendanceRes.data.success) {
+          setAttendance(attendanceRes.data.attendance);
         }
-
-        if (meDoc?.role === "student" && meDoc?.classId) {
-          // Lecture reports for this student's class
-          const cr = reports.filter((r) => r.classId === meDoc.classId);
-          setClassReports(cr);
-
-          // Attendance records for THIS student specifically
-          // attendance doc fields: studentId, courseId, classId, status, date, courseName
-          const attQ   = query(
-            collection(db, "attendance"),
-            where("studentId", "==", user.uid)
-          );
-          const attSnap = await getDocs(attQ);
-          const attDocs = attSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setMyAttendance(attDocs);
+        
+        // Also load reports for their class
+        const reportsRes = await api.get("/reports");
+        if (reportsRes.data.success) {
+          setReports(reportsRes.data.reports);
         }
-
-      } catch (e) {
-        console.log("Monitoring error:", e.message);
-      } finally {
-        setLoading(false);
+        
+      } else if (userRole === "lecturer") {
+        // Lecturer: load their own reports
+        const reportsRes = await api.get("/reports");
+        if (reportsRes.data.success) {
+          // Filter reports for this lecturer (in real app, backend does this)
+          setMyReports(reportsRes.data.reports);
+        }
+        
+        // Load their courses
+        const coursesRes = await api.get("/courses");
+        if (coursesRes.data.success) {
+          setCourses(coursesRes.data.courses);
+        }
+        
+      } else if (userRole === "prl") {
+        // PRL: load all reports for review
+        const reportsRes = await api.get("/reports");
+        if (reportsRes.data.success) {
+          setReports(reportsRes.data.reports);
+        }
+        
+      } else if (userRole === "pl") {
+        // PL: load all reports and system stats
+        const reportsRes = await api.get("/reports");
+        if (reportsRes.data.success) {
+          setReports(reportsRes.data.reports);
+        }
+        
+        const coursesRes = await api.get("/courses");
+        if (coursesRes.data.success) {
+          setCourses(coursesRes.data.courses);
+        }
       }
-    };
+      
+    } catch (error) {
+      console.log("Loading error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    load();
+  useEffect(() => {
+    loadData();
   }, []);
 
-  /* ───────────────────────────────────────────
-     LOADING
-  ─────────────────────────────────────────── */
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -228,73 +212,66 @@ export default function MonitoringScreen() {
     );
   }
 
-  /* =========================================================
-     STUDENT VIEW
-     - Real attendance from `attendance` collection
-     - One row per lecture report, showing Present / Absent
-  ========================================================= */
+  // ========== STUDENT VIEW ==========
   if (role === "student") {
-    // For each lecture report in this class, check if student has an attendance doc
-    const lecturesWithStatus = classReports.map((report) => {
-      const attDoc = myAttendance.find(
-        (a) =>
-          // match by courseId OR by classId+date as fallback
-          a.courseId === report.courseId ||
-          (a.classId === report.classId &&
-            (a.date === report.date ||
-              a.date?.substring(0, 10) === report.date?.substring(0, 10)))
+    // Match attendance with reports
+    const lecturesWithStatus = reports.map((report) => {
+      const attDoc = attendance.find(
+        (a) => a.courseId === report.courseId || a.courseName === report.courseName
       );
-      const present =
-        attDoc?.status?.toLowerCase() === "present" ||
-        attDoc?.status?.toLowerCase() === "attended";
-      return { report, present, hasRecord: !!attDoc };
+      const present = attDoc?.status?.toLowerCase() === "present";
+      return { report, present };
     });
 
-    const totalLectures  = lecturesWithStatus.length;
-    const attended       = lecturesWithStatus.filter((l) => l.present).length;
-    const attendancePct  = pct(attended, totalLectures);
-    const pillColor      = attendancePct >= 75 ? C.green : attendancePct >= 50 ? C.amber : C.red;
+    const totalLectures = lecturesWithStatus.length;
+    const attended = lecturesWithStatus.filter((l) => l.present).length;
+    const attendancePct = pct(attended, totalLectures);
+    const pillColor = attendancePct >= 75 ? C.green : attendancePct >= 50 ? C.amber : C.red;
 
     return (
       <View style={styles.screen}>
         <Header
-          eyebrow="Student Dashboard"
+          eyebrow="Student Portal"
           title="My Monitoring"
-          sub={user.displayName || me?.displayName || me?.name || ""}
+          sub="Track your attendance and performance"
         />
 
-        <ScrollView
-          contentContainerStyle={styles.body}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── Stat row ── */}
-          <View style={styles.statRow}>
-            <StatCard
-              label="Attendance"
-              value={`${attendancePct}%`}
-              sub={`${attended} / ${totalLectures} lectures`}
-              accent={pillColor}
-            />
-            <StatCard
-              label="Lectures"
-              value={totalLectures}
-              sub="covered in class"
-              accent={C.navy}
-            />
-          </View>
+        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <StatStrip>
+            <StatItem label="Attendance" value={`${attendancePct}%`} color={pillColor} />
+            <StatDivider />
+            <StatItem label="Present" value={attended} />
+            <StatDivider />
+            <StatItem label="Absent" value={totalLectures - attended} />
+            <StatDivider />
+            <StatItem label="Lectures" value={totalLectures} />
+          </StatStrip>
 
-          {/* ── Per-lecture attendance ── */}
-          <SectionLabel text="Lecture Attendance" />
+          <SectionLabel text="Your Attendance Records" />
 
-          {lecturesWithStatus.length === 0 ? (
-            <Text style={styles.emptyText}>No lecture reports yet for your class.</Text>
+          {attendance.length === 0 ? (
+            <Text style={styles.emptyText}>No attendance records yet.</Text>
           ) : (
-            lecturesWithStatus.map(({ report, present, hasRecord }) => (
-              <AttendanceRow
-                key={report.id}
-                report={report}
-                present={present}
-              />
+            attendance.map((item) => (
+              <View key={item.id} style={styles.attRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.attTopic}>{item.courseName}</Text>
+                  <Text style={styles.attMeta}>
+                    {fmtDate(item.date)}
+                  </Text>
+                </View>
+                <View style={[
+                  styles.statusPill,
+                  item.status === "Present" ? { backgroundColor: C.greenBg } : { backgroundColor: C.redBg }
+                ]}>
+                  <Text style={[
+                    styles.statusText,
+                    item.status === "Present" ? { color: C.green } : { color: C.red }
+                  ]}>
+                    {item.status}
+                  </Text>
+                </View>
+              </View>
             ))
           )}
         </ScrollView>
@@ -302,155 +279,144 @@ export default function MonitoringScreen() {
     );
   }
 
-  /* =========================================================
-     LECTURER VIEW
-  ========================================================= */
+  // ========== LECTURER VIEW ==========
   if (role === "lecturer") {
-    const totalRegistered = myReports.reduce(
-      (s, r) => s + Number(r.totalRegistered || 0), 0
-    );
-    const totalPresent = myReports.reduce(
-      (s, r) => s + Number(r.actualPresent || 0), 0
-    );
-    const avgAtt = pct(totalPresent, totalRegistered);
-
+    // Calculate lecturer's stats
+    const totalClasses = myReports.length;
+    const totalStudents = 0; // Would need separate endpoint
+    
     return (
       <View style={styles.screen}>
         <Header
-          eyebrow="Lecturer Dashboard"
+          eyebrow="Lecturer Portal"
           title="My Monitoring"
-          sub={user.displayName || me?.displayName || me?.name || "Lecturer"}
+          sub="Track your reports and class performance"
         />
 
-        <ScrollView
-          contentContainerStyle={styles.body}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.statRow}>
-            <StatCard
-              label="Reports"
-              value={myReports.length}
-              sub="submitted"
-              accent={C.navy}
-            />
-            <StatCard
-              label="Avg Attendance"
-              value={`${avgAtt}%`}
-              sub={`${totalPresent} / ${totalRegistered}`}
-              accent={avgAtt >= 75 ? C.green : avgAtt >= 50 ? C.amber : C.red}
-            />
-          </View>
+        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <StatStrip>
+            <StatItem label="Reports" value={myReports.length} />
+            <StatDivider />
+            <StatItem label="Courses" value={courses.length} />
+            <StatDivider />
+            <StatItem label="Classes" value={courses.length} />
+          </StatStrip>
 
-          <SectionLabel text="Report History" />
+          <SectionLabel text="Your Recent Reports" />
 
           {myReports.length === 0 ? (
             <Text style={styles.emptyText}>No reports submitted yet.</Text>
           ) : (
-            myReports
-              .slice()
-              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-              .map((r) => <ReportRow key={r.id} item={r} />)
+            myReports.slice(0, 10).map((item) => (
+              <ReportRow key={item.id} item={item} />
+            ))
           )}
         </ScrollView>
       </View>
     );
   }
 
-  /* =========================================================
-     PRL VIEW
-  ========================================================= */
+  // ========== PRL VIEW ==========
   if (role === "prl") {
-    const pending  = allReports.filter((r) => !r.prlFeedback);
-    const reviewed = allReports.filter((r) =>  r.prlFeedback);
+    const pendingReports = reports.filter(r => r.status === "pending").length;
+    const reviewedReports = reports.filter(r => r.status === "reviewed").length;
+    
+    return (
+      <View style={styles.screen}>
+        <Header
+          eyebrow="PRL Portal"
+          title="Academic Monitoring"
+          sub="Review lecturer reports and provide feedback"
+        />
+
+        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <StatStrip>
+            <StatItem label="Total Reports" value={reports.length} />
+            <StatDivider />
+            <StatItem label="Pending" value={pendingReports} color={C.amber} />
+            <StatDivider />
+            <StatItem label="Reviewed" value={reviewedReports} color={C.green} />
+          </StatStrip>
+
+          <SectionLabel text="Pending Reports for Review" />
+
+          {pendingReports === 0 ? (
+            <Text style={styles.emptyText}>All reports have been reviewed.</Text>
+          ) : (
+            reports.filter(r => r.status === "pending").map((item) => (
+              <ReportRow key={item.id} item={item} />
+            ))
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ========== PL VIEW ==========
+  if (role === "pl") {
+    const totalReports = reports.length;
+    const pendingReports = reports.filter(r => r.status === "pending").length;
+    const reviewedReports = reports.filter(r => r.status === "reviewed").length;
+    
+    // Calculate overall attendance percentage from reports
+    let totalPresent = 0;
+    let totalRegistered = 0;
+    reports.forEach(r => {
+      totalPresent += Number(r.actualPresent) || 0;
+      totalRegistered += Number(r.totalRegistered) || 0;
+    });
+    const overallAttendance = totalRegistered > 0 ? pct(totalPresent, totalRegistered) : 0;
+    const attColor = overallAttendance >= 75 ? C.green : overallAttendance >= 50 ? C.amber : C.red;
 
     return (
       <View style={styles.screen}>
         <Header
-          eyebrow="PRL Dashboard"
-          title="Academic Monitoring"
-          sub={user.displayName || me?.displayName || me?.name || "PRL"}
+          eyebrow="Programme Leader"
+          title="System Monitoring"
+          sub="Complete overview of academic performance"
         />
 
-        <ScrollView
-          contentContainerStyle={styles.body}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.statRow}>
-            <StatCard label="Total Reports" value={allReports.length} accent={C.navy} />
-            <StatCard label="Pending"        value={pending.length}   accent={C.amber} />
-          </View>
-          <View style={styles.statRow}>
-            <StatCard label="Reviewed"       value={reviewed.length}  accent={C.green} />
-          </View>
+        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <StatStrip>
+            <StatItem label="Total Reports" value={totalReports} />
+            <StatDivider />
+            <StatItem label="Pending" value={pendingReports} color={C.amber} />
+            <StatDivider />
+            <StatItem label="Reviewed" value={reviewedReports} color={C.green} />
+          </StatStrip>
 
-          <SectionLabel text="Pending Reports" />
-          {pending.length === 0 ? (
-            <Text style={styles.emptyText}>All reports have been reviewed.</Text>
+          <StatStrip>
+            <StatItem label="Courses" value={courses.length} />
+            <StatDivider />
+            <StatItem label="Overall Attendance" value={`${overallAttendance}%`} color={attColor} />
+          </StatStrip>
+
+          <SectionLabel text="All Recent Reports" />
+
+          {reports.length === 0 ? (
+            <Text style={styles.emptyText}>No reports available.</Text>
           ) : (
-            pending
-              .slice()
-              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-              .map((r) => <ReportRow key={r.id} item={r} />)
+            reports.slice(0, 20).map((item) => (
+              <ReportRow key={item.id} item={item} />
+            ))
           )}
         </ScrollView>
       </View>
     );
   }
 
-  /* =========================================================
-     PL / ADMIN VIEW
-  ========================================================= */
-  const lecturers = allUsers.filter((u) => u.role === "lecturer");
-  const students  = allUsers.filter((u) => u.role === "student");
-  const totalAtt  = pct(
-    allReports.reduce((s, r) => s + Number(r.actualPresent   || 0), 0),
-    allReports.reduce((s, r) => s + Number(r.totalRegistered || 0), 0)
-  );
-
+  // Fallback loading
   return (
-    <View style={styles.screen}>
-      <Header
-        eyebrow="PL Dashboard"
-        title="System Monitoring"
-        sub={user.displayName || me?.displayName || me?.name || "Programme Leader"}
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.body}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.statRow}>
-          <StatCard label="Lecturers"       value={lecturers.length}   accent={C.navy} />
-          <StatCard label="Students"        value={students.length}    accent={C.navy2} />
-        </View>
-        <View style={styles.statRow}>
-          <StatCard label="Total Reports"   value={allReports.length}  accent={C.navy} />
-          <StatCard
-            label="System Attendance"
-            value={`${totalAtt}%`}
-            accent={totalAtt >= 75 ? C.green : totalAtt >= 50 ? C.amber : C.red}
-          />
-        </View>
-
-        <SectionLabel text="Recent Reports" />
-        {allReports
-          .slice()
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-          .slice(0, 20)
-          .map((r) => <ReportRow key={r.id} item={r} />)}
-      </ScrollView>
+    <View style={styles.centered}>
+      <ActivityIndicator size="large" color={C.navy} />
     </View>
   );
 }
 
-/* ─────────────────────────────────────────────
-   STYLES
-───────────────────────────────────────────── */
 const styles = StyleSheet.create({
   screen:  { flex: 1, backgroundColor: C.bg },
-  centered:{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
 
-  // Header
   header: {
     backgroundColor: C.navy,
     paddingTop: 52,
@@ -478,44 +444,35 @@ const styles = StyleSheet.create({
 
   body: { padding: 16, paddingBottom: 40 },
 
-  // Stat cards
-  statRow: {
+  statStrip: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: C.card,
+    backgroundColor: C.navy,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 16,
+    paddingVertical: 16,
+    marginBottom: 16,
+  },
+  statItem: {
+    flex: 1,
     alignItems: "center",
   },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.8,
-    color: C.muted,
-    textTransform: "uppercase",
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  statValue: {
-    fontSize: 28,
+  statNum: {
+    fontSize: 22,
     fontWeight: "700",
-    color: C.text,
-    textAlign: "center",
+    color: C.white,
+    marginBottom: 2,
   },
-  statSub: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 4,
-    textAlign: "center",
+  statMeta: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.4)",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginVertical: 4,
   },
 
-  // Section label
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
@@ -526,7 +483,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  // Attendance row
   attRow: {
     backgroundColor: C.card,
     borderRadius: 12,
@@ -560,7 +516,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Report row
   reportRow: {
     backgroundColor: C.card,
     borderRadius: 12,

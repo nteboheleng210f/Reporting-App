@@ -6,526 +6,669 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  SafeAreaView,
   Alert,
   ActivityIndicator,
   StatusBar,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
-import { auth, db } from "../firebase/config";
-import {
-  collection,
-  getDocs,
-  addDoc,
-  doc,
-  getDoc,
-} from "firebase/firestore";
+const C = {
+  navy:    "#0f1f3d",
+  navy2:   "#1a2f52",
+  navy3:   "#253d66",
+  gold:    "#c9a84c",
+  white:   "#ffffff",
+  bg:      "#f5f7fb",
+  card:    "#ffffff",
+  border:  "#e4e8f0",
+  text:    "#102040",
+  muted:   "#6c7a96",
+  badge:   "#edf0f7",
+  green:   "#16a34a",
+  greenBg: "#dcfce7",
+};
+
+function Field({ label, value, onChangeText, placeholder }) {
+  return (
+    <View style={s.field}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <TextInput
+        style={s.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || ""}
+        placeholderTextColor={C.muted}
+      />
+    </View>
+  );
+}
+
+function FormSection({ title }) {
+  return (
+    <View style={s.formSection}>
+      <Text style={s.formSectionText}>{title}</Text>
+      <View style={s.formSectionLine} />
+    </View>
+  );
+}
+
+function SectionLabel({ text }) {
+  return <Text style={s.sectionLabel}>{text}</Text>;
+}
+
+function Dropdown({ label, placeholder, selected, open, onToggle, children }) {
+  return (
+    <View style={s.field}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <TouchableOpacity
+        style={[s.dropdownBox, open && s.dropdownBoxOpen]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
+        <Text style={[s.dropdownText, !selected && { color: C.muted }]}>
+          {selected || placeholder}
+        </Text>
+        <Text style={s.dropdownArrow}>{open ? "▲" : "▼"}</Text>
+      </TouchableOpacity>
+      {open && (
+        <View style={s.dropdownList}>{children}</View>
+      )}
+    </View>
+  );
+}
+
+function DropdownOption({ title, sub, onPress }) {
+  return (
+    <TouchableOpacity style={s.dropdownOption} onPress={onPress} activeOpacity={0.8}>
+      <Text style={s.dropdownOptionTitle}>{title}</Text>
+      {!!sub && <Text style={s.dropdownOptionSub}>{sub}</Text>}
+    </TouchableOpacity>
+  );
+}
+
+function CourseCard({ item }) {
+  return (
+    <View style={s.courseCard}>
+      <View style={s.courseCardHeader}>
+        <View style={s.courseInitials}>
+          <Text style={s.courseInitialsText}>
+            {(item.courseCode || item.courseName || "CO").slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.courseCardName}>{item.courseName}</Text>
+          {!!item.courseCode && (
+            <Text style={s.courseCardCode}>{item.courseCode}</Text>
+          )}
+        </View>
+      </View>
+      <View style={s.metaRow}>
+        {!!item.className && (
+          <View style={s.metaChip}>
+            <Text style={s.metaChipText}>{item.className}</Text>
+          </View>
+        )}
+        {!!item.venue && (
+          <View style={s.metaChip}>
+            <Text style={s.metaChipText}>{item.venue}</Text>
+          </View>
+        )}
+        {(item.day || item.time) && (
+          <View style={s.metaChip}>
+            <Text style={s.metaChipText}>
+              {[item.day, item.time].filter(Boolean).join("  ·  ")}
+            </Text>
+          </View>
+        )}
+        {!!item.lecturerName && (
+          <View style={[s.metaChip, s.metaChipGold]}>
+            <Text style={[s.metaChipText, s.metaChipTextGold]}>
+              {item.lecturerName}
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
 
 export default function CoursesScreen() {
-  const user = auth.currentUser;
-
   const [role, setRole] = useState(null);
+  const [fetching, setFetching]   = useState(true);
+  const [loading, setLoading]     = useState(false);
 
-  const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(true);
-
-  const [courses, setCourses] = useState([]);
-  const [classes, setClasses] = useState([]);
+  const [courses, setCourses]     = useState([]);
+  const [classes, setClasses]     = useState([]);
   const [lecturers, setLecturers] = useState([]);
 
-  // FORM (PL only)
-  const [courseName, setCourseName] = useState("");
-  const [courseCode, setCourseCode] = useState("");
-
-  const [selectedClass, setSelectedClass] = useState(null);
+  const [courseName, setCourseName]             = useState("");
+  const [courseCode, setCourseCode]             = useState("");
+  const [selectedClass, setSelectedClass]       = useState(null);
   const [selectedLecturer, setSelectedLecturer] = useState(null);
+  const [showClassDrop, setShowClassDrop]       = useState(false);
+  const [showLecturerDrop, setShowLecturerDrop] = useState(false);
 
-  const [showClassDropdown, setShowClassDropdown] = useState(false);
-  const [showLecturerDropdown, setShowLecturerDropdown] = useState(false);
+  // Get user role
+  const getUserRole = async () => {
+    const userRole = await AsyncStorage.getItem("user_role");
+    setRole(userRole);
+    return userRole;
+  };
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        // role
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        const userRole = userSnap.data()?.role;
-        setRole(userRole);
-
-        // shared data
-        const classSnap = await getDocs(collection(db, "classSchedules"));
-        const userListSnap = await getDocs(collection(db, "users"));
-        const courseSnap = await getDocs(collection(db, "courses"));
-
-        setClasses(
-          classSnap.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
-        );
-
-        setCourses(
-          courseSnap.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
-        );
-
-        const lecturerList = userListSnap.docs
-          .map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
-          .filter((u) => u.role === "lecturer");
-
-        setLecturers(lecturerList);
-      } catch (e) {
-        Alert.alert("Error", e.message);
-      } finally {
-        setFetching(false);
+  // Load all courses (PL sees all, PRL sees all, Lecturer sees own)
+  const loadCourses = async () => {
+    try {
+      const response = await api.get("/courses");
+      if (response.data.success) {
+        setCourses(response.data.courses);
       }
-    };
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load courses");
+    }
+  };
 
-    load();
-  }, []);
+  // Load classes (only for PL)
+  const loadClasses = async () => {
+    try {
+      const response = await api.get("/courses/classes");
+      if (response.data.success) {
+        setClasses(response.data.classes);
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load classes");
+    }
+  };
 
-  // =========================
-  // CREATE COURSE (PL only)
-  // =========================
+  // Load lecturers (only for PL)
+  const loadLecturers = async () => {
+    try {
+      const response = await api.get("/courses/lecturers");
+      if (response.data.success) {
+        setLecturers(response.data.lecturers);
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load lecturers");
+    }
+  };
+
+  // Create course (only PL)
   const createCourse = async () => {
     if (!courseName || !courseCode || !selectedClass || !selectedLecturer) {
-      Alert.alert("Missing Info", "Please fill all fields");
-      return;
+      return Alert.alert("Missing fields", "Please fill all fields.");
     }
 
+    setLoading(true);
     try {
-      setLoading(true);
-
-      await addDoc(collection(db, "courses"), {
+      const payload = {
         courseName,
         courseCode,
-
         classId: selectedClass.id,
         className: selectedClass.className,
-        venue: selectedClass.venue,
-        day: selectedClass.day,
-        time: selectedClass.time,
-
+        venue: selectedClass.venue || "",
+        day: selectedClass.day || "",
+        time: selectedClass.time || "",
         lecturerId: selectedLecturer.id,
-        lecturerName:
-          selectedLecturer.username || selectedLecturer.email,
+        lecturerName: selectedLecturer.username || selectedLecturer.email,
+      };
 
-        createdAt: new Date().toISOString(),
-      });
-
-      Alert.alert("Success", "Course created successfully");
-
-      setCourseName("");
-      setCourseCode("");
-      setSelectedClass(null);
-      setSelectedLecturer(null);
-      setShowClassDropdown(false);
-      setShowLecturerDropdown(false);
-
-      const snap = await getDocs(collection(db, "courses"));
-      setCourses(
-        snap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-      );
-    } catch (e) {
-      Alert.alert("Error", e.message);
+      const response = await api.post("/courses", payload);
+      if (response.data.success) {
+        Alert.alert("Success", "Course created successfully.");
+        setCourseName("");
+        setCourseCode("");
+        setSelectedClass(null);
+        setSelectedLecturer(null);
+        setShowClassDrop(false);
+        setShowLecturerDrop(false);
+        await loadCourses();
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to create course");
     } finally {
       setLoading(false);
     }
   };
 
-  // =========================
-  // LOADING
-  // =========================
+  useEffect(() => {
+    const init = async () => {
+      const userRole = await getUserRole();
+      
+      // Load courses for everyone
+      await loadCourses();
+      
+      // Only PL can create courses, so only they need classes and lecturers
+      if (userRole === "pl") {
+        await loadClasses();
+        await loadLecturers();
+      }
+      
+      setFetching(false);
+    };
+    init();
+  }, []);
+
   if (fetching) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#60a5fa" />
-        <Text style={styles.loadingText}>Loading courses...</Text>
+      <View style={s.centered}>
+        <ActivityIndicator size="large" color={C.navy} />
       </View>
     );
   }
 
+  // ========== LECTURER VIEW ==========
+  if (role === "lecturer") {
+    // Filter courses assigned to this lecturer
+    const myCourses = courses.filter(course => course.lecturerId === "test_lecturer_id");
+    
+    return (
+      <SafeAreaView style={s.screen}>
+        <StatusBar barStyle="light-content" backgroundColor={C.navy} />
+
+        <View style={s.header}>
+          <Text style={s.eyebrow}>Lecturer Portal</Text>
+          <Text style={s.headerTitle}>My Courses</Text>
+          <Text style={s.headerSub}>Courses assigned to you</Text>
+        </View>
+
+        <ScrollView contentContainerStyle={s.body}>
+          <SectionLabel text="Assigned Courses" />
+
+          {myCourses.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.emptyTitle}>No courses assigned</Text>
+              <Text style={s.emptyText}>
+                Your programme leader hasn't assigned any courses to you yet.
+              </Text>
+            </View>
+          ) : (
+            myCourses.map((item) => (
+              <CourseCard key={item.id} item={item} />
+            ))
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ========== PRL VIEW ==========
+  if (role === "prl") {
+    return (
+      <SafeAreaView style={s.screen}>
+        <StatusBar barStyle="light-content" backgroundColor={C.navy} />
+
+        <View style={s.header}>
+          <Text style={s.eyebrow}>PRL Portal</Text>
+          <Text style={s.headerTitle}>All Courses</Text>
+          <Text style={s.headerSub}>View all courses and assigned lecturers</Text>
+        </View>
+
+        <ScrollView contentContainerStyle={s.body}>
+          <SectionLabel text="All Courses in Stream" />
+
+          {courses.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.emptyTitle}>No courses found</Text>
+              <Text style={s.emptyText}>No courses have been created yet.</Text>
+            </View>
+          ) : (
+            courses.map((item) => (
+              <CourseCard key={item.id} item={item} />
+            ))
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ========== PL VIEW (Programme Leader) ==========
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={s.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      {/* HEADER */}
-      <View style={styles.headerCard}>
-        <View>
-          <Text style={styles.pageTitle}>
-            {role === "prl"
-              ? "PRL Courses Overview"
-              : "Courses Management"}
-          </Text>
-
-          <Text style={styles.pageSub}>
-            {role === "prl"
-              ? "View all modules • assigned lecturers"
-              : "Create modules • assign lecturers"}
-          </Text>
-        </View>
-
-        <View style={styles.headerIcon}>
-          <Text style={styles.headerIconText}></Text>
-        </View>
+      <View style={s.header}>
+        <Text style={s.eyebrow}>Programme Leader</Text>
+        <Text style={s.headerTitle}>Courses Management</Text>
+        <Text style={s.headerSub}>Create modules and assign lecturers</Text>
       </View>
 
-      {/* ========================= */}
-      {/* PL ONLY → CREATE FORM */}
-      {/* ========================= */}
-      {role !== "prl" && (
-        <>
-          <Text style={styles.sectionLabel}>CREATE NEW COURSE</Text>
-
-          <View style={styles.formCard}>
-            <Text style={styles.fieldLabel}>Course Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Database Systems"
-              placeholderTextColor="#475569"
-              value={courseName}
-              onChangeText={setCourseName}
-            />
-
-            <Text style={styles.fieldLabel}>Course Code</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. BIS1213"
-              placeholderTextColor="#475569"
-              value={courseCode}
-              onChangeText={setCourseCode}
-            />
-
-            {/* CLASS */}
-            <Text style={styles.fieldLabel}>Select Class Schedule</Text>
-
-            <TouchableOpacity
-              style={styles.dropdownBox}
-              onPress={() => {
-                setShowClassDropdown(!showClassDropdown);
-                setShowLecturerDropdown(false);
-              }}
-            >
-              <Text style={styles.dropdownText}>
-                {selectedClass
-                  ? `${selectedClass.className} (${selectedClass.venue})`
-                  : "Choose Class Schedule"}
-              </Text>
-
-              <Text style={styles.dropdownArrow}>
-                {showClassDropdown ? "▲" : "▼"}
-              </Text>
-            </TouchableOpacity>
-
-            {showClassDropdown &&
-              classes.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.optionCard}
-                  onPress={() => {
-                    setSelectedClass(item);
-                    setShowClassDropdown(false);
-                  }}
-                >
-                  <Text style={styles.cardTitle}>
-                    {item.className}
-                  </Text>
-
-                  <Text style={styles.cardSub}>
-                    {item.venue}
-                  </Text>
-
-                  <Text style={styles.cardSub}>
-                    {item.day} • {item.time}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-
-            {/* LECTURER */}
-            <Text style={styles.fieldLabel}>Select Lecturer</Text>
-
-            <TouchableOpacity
-              style={styles.dropdownBox}
-              onPress={() => {
-                setShowLecturerDropdown(!showLecturerDropdown);
-                setShowClassDropdown(false);
-              }}
-            >
-              <Text style={styles.dropdownText}>
-                {selectedLecturer
-                  ? selectedLecturer.username || selectedLecturer.email
-                  : "Choose Lecturer"}
-              </Text>
-
-              <Text style={styles.dropdownArrow}>
-                {showLecturerDropdown ? "▲" : "▼"}
-              </Text>
-            </TouchableOpacity>
-
-            {showLecturerDropdown &&
-              lecturers.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.optionCard}
-                  onPress={() => {
-                    setSelectedLecturer(item);
-                    setShowLecturerDropdown(false);
-                  }}
-                >
-                  <Text style={styles.cardTitle}>
-                    {item.username || item.email}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-
-            <TouchableOpacity
-              style={[
-                styles.createBtn,
-                loading && styles.disabledBtn,
-              ]}
-              onPress={createCourse}
-              disabled={loading}
-            >
-              <Text style={styles.createBtnText}>
-                {loading ? "Saving..." : "+ Create Course"}
-              </Text>
-            </TouchableOpacity>
+      <ScrollView
+        contentContainerStyle={s.body}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <FormSection title="Create New Course" />
+        <View style={s.formCard}>
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Course Name"
+                value={courseName}
+                onChangeText={setCourseName}
+                placeholder="e.g. Database Systems"
+              />
+            </View>
+            <View style={{ width: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Course Code"
+                value={courseCode}
+                onChangeText={setCourseCode}
+                placeholder="e.g. BIS1213"
+              />
+            </View>
           </View>
-        </>
-      )}
 
-      <Text style={styles.sectionLabel}>
-        {role === "prl" ? "ALL COURSES" : "CREATED COURSES"}
-      </Text>
+          <Dropdown
+            label="Select Class Schedule"
+            placeholder="Choose a class"
+            selected={selectedClass ? `${selectedClass.className}  ·  ${selectedClass.venue || ""}` : null}
+            open={showClassDrop}
+            onToggle={() => {
+              setShowClassDrop(!showClassDrop);
+              setShowLecturerDrop(false);
+            }}
+          >
+            {classes.map((item) => (
+              <DropdownOption
+                key={item.id}
+                title={item.className}
+                sub={[item.venue, item.day, item.time].filter(Boolean).join("  ·  ")}
+                onPress={() => {
+                  setSelectedClass(item);
+                  setShowClassDrop(false);
+                }}
+              />
+            ))}
+          </Dropdown>
 
-      {courses.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            No courses created yet
-          </Text>
+          <Dropdown
+            label="Select Lecturer"
+            placeholder="Choose a lecturer"
+            selected={selectedLecturer ? selectedLecturer.username || selectedLecturer.email : null}
+            open={showLecturerDrop}
+            onToggle={() => {
+              setShowLecturerDrop(!showLecturerDrop);
+              setShowClassDrop(false);
+            }}
+          >
+            {lecturers.map((item) => (
+              <DropdownOption
+                key={item.id}
+                title={item.username || item.email}
+                sub={item.email}
+                onPress={() => {
+                  setSelectedLecturer(item);
+                  setShowLecturerDrop(false);
+                }}
+              />
+            ))}
+          </Dropdown>
+
+          <TouchableOpacity
+            style={[s.submitBtn, loading && { opacity: 0.6 }]}
+            onPress={createCourse}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            <Text style={s.submitText}>
+              {loading ? "Saving…" : "Create Course"}
+            </Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        courses.map((item) => (
-          <View key={item.id} style={styles.courseCard}>
-            <Text style={styles.courseTitle}>
-              {item.courseName} ({item.courseCode})
-            </Text>
 
-            {/* PRL required info */}
-            <Text style={styles.metaText}>
-              Lecturer: {item.lecturerName}
-            </Text>
+        <SectionLabel text="Created Courses" />
 
-            <Text style={styles.metaText}>
-               Class: {item.className} • {item.venue}
-            </Text>
-
-            <Text style={styles.metaText}>
-               {item.day} •  {item.time}
+        {courses.length === 0 ? (
+          <View style={s.emptyCard}>
+            <Text style={s.emptyTitle}>No courses yet</Text>
+            <Text style={s.emptyText}>
+              Use the form above to create your first course.
             </Text>
           </View>
-        ))
-      )}
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
+        ) : (
+          courses.map((item) => (
+            <CourseCard key={item.id} item={item} />
+          ))
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#070b18",
-    padding: 16,
-  },
+const s = StyleSheet.create({
+  screen:   { flex: 1, backgroundColor: C.bg },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
 
-  center: {
-    flex: 1,
-    backgroundColor: "#070b18",
-    justifyContent: "center",
-    alignItems: "center",
+  header: {
+    backgroundColor: C.navy,
+    paddingTop: 52,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
   },
-
-  loadingText: {
-    color: "#94a3b8",
-    marginTop: 10,
-    fontSize: 14,
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
-
-  headerCard: {
-    backgroundColor: "#0f172a",
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 18,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  pageTitle: {
-    color: "#f8fafc",
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 26,
     fontWeight: "700",
+    color: C.white,
+    marginBottom: 4,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
   },
 
-  pageSub: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 4,
-  },
-
-  headerIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: "#0c2d4e",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  headerIconText: {
-    fontSize: 18,
-  },
+  body: { padding: 16, paddingBottom: 48 },
 
   sectionLabel: {
-    color: "#64748b",
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 1,
+    color: C.muted,
+    textTransform: "uppercase",
+    marginTop: 20,
     marginBottom: 10,
   },
 
-  formCard: {
-    backgroundColor: "#0f172a",
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 18,
-  },
-
-  fieldLabel: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginBottom: 6,
+  formSection: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 8,
-    fontWeight: "500",
+    marginBottom: 12,
+    gap: 10,
+  },
+  formSectionText: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    color: C.navy,
+    textTransform: "uppercase",
+    flexShrink: 0,
+  },
+  formSectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: C.border,
   },
 
+  formCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 16,
+  },
+
+  row: { flexDirection: "row" },
+
+  field: { marginBottom: 14 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.text,
+    marginBottom: 6,
+  },
   input: {
-    backgroundColor: "#111827",
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 10,
-    padding: 12,
-    color: "#f8fafc",
-    marginBottom: 8,
-    fontSize: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: C.text,
   },
 
   dropdownBox: {
-    backgroundColor: "#111827",
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-
-  dropdownText: {
-    color: "#f8fafc",
-    fontSize: 13,
+  dropdownBoxOpen: {
+    borderColor: C.navy,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
+  dropdownText:  { fontSize: 14, color: C.text, flex: 1 },
+  dropdownArrow: { fontSize: 10, color: C.muted, marginLeft: 8 },
 
-  dropdownArrow: {
-    color: "#94a3b8",
-    fontSize: 12,
+  dropdownList: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: C.navy,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    overflow: "hidden",
+    marginBottom: 4,
   },
-
-  optionCard: {
-    backgroundColor: "#111827",
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+  dropdownOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
-
-  cardTitle: {
-    color: "#f8fafc",
-    fontSize: 13,
+  dropdownOptionTitle: {
+    fontSize: 14,
     fontWeight: "600",
+    color: C.text,
+  },
+  dropdownOptionSub: {
+    fontSize: 12,
+    color: C.muted,
+    marginTop: 2,
   },
 
-  cardSub: {
-    color: "#64748b",
-    fontSize: 12,
+  submitBtn: {
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
     marginTop: 4,
   },
-
-  createBtn: {
-    backgroundColor: "#2563eb",
-    padding: 13,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 12,
-  },
-
-  disabledBtn: {
-    opacity: 0.6,
-  },
-
-  createBtnText: {
-    color: "#dbeafe",
+  submitText: {
+    color: C.white,
     fontWeight: "700",
-    fontSize: 13,
-  },
-
-  emptyCard: {
-    backgroundColor: "#0f172a",
-    borderRadius: 14,
-    padding: 20,
-    alignItems: "center",
-  },
-
-  emptyText: {
-    color: "#64748b",
-    fontSize: 13,
+    fontSize: 14,
+    letterSpacing: 0.4,
   },
 
   courseCard: {
-    backgroundColor: "#0f172a",
-    borderLeftWidth: 3,
-    borderLeftColor: "#2563eb",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 14,
-    padding: 14,
+    padding: 16,
     marginBottom: 10,
   },
-
-  courseTitle: {
-    color: "#93c5fd",
+  courseCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 10,
+  },
+  courseInitials: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: C.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  courseInitialsText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.gold,
+  },
+  courseCardName: {
     fontSize: 15,
     fontWeight: "700",
-    marginBottom: 8,
+    color: C.text,
+    marginBottom: 2,
+  },
+  courseCardCode: {
+    fontSize: 12,
+    color: C.muted,
   },
 
-  metaText: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginBottom: 4,
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  metaChip: {
+    backgroundColor: C.badge,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  metaChipText: {
+    fontSize: 11,
+    color: C.muted,
+    fontWeight: "500",
+  },
+  metaChipGold: {
+    backgroundColor: "#fef9ec",
+    borderWidth: 1,
+    borderColor: "#f5e2a8",
+  },
+  metaChipTextGold: {
+    color: "#92700a",
+  },
+
+  emptyCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 28,
+    alignItems: "center",
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: C.muted,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });

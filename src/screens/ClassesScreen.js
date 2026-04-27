@@ -6,39 +6,155 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  SafeAreaView,
   Alert,
   ActivityIndicator,
   StatusBar,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
-import { auth, db } from "../firebase/config";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  doc,
-  updateDoc,
-  getDoc,
-  query,
-  where,
-} from "firebase/firestore";
+const C = {
+  navy:    "#0f1f3d",
+  navy2:   "#1a2f52",
+  navy3:   "#253d66",
+  gold:    "#c9a84c",
+  white:   "#ffffff",
+  bg:      "#f5f7fb",
+  card:    "#ffffff",
+  border:  "#e4e8f0",
+  text:    "#102040",
+  muted:   "#6c7a96",
+  badge:   "#edf0f7",
+  green:   "#16a34a",
+  greenBg: "#dcfce7",
+};
 
 const getInitials = (name = "", email = "") => {
-  const src = name || email;
-  const parts = src.trim().split(" ");
+  const src = (name || email).trim();
+  const parts = src.split(" ");
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return src.slice(0, 2).toUpperCase();
 };
 
+function Field({ label, value, onChangeText, placeholder }) {
+  return (
+    <View style={s.field}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <TextInput
+        style={s.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || ""}
+        placeholderTextColor={C.muted}
+      />
+    </View>
+  );
+}
+
+function FormSection({ title }) {
+  return (
+    <View style={s.formSection}>
+      <Text style={s.formSectionText}>{title}</Text>
+      <View style={s.formSectionLine} />
+    </View>
+  );
+}
+
+function SectionLabel({ text }) {
+  return <Text style={s.sectionLabel}>{text}</Text>;
+}
+
+function ClassCard({ item, isLecturer, isSelected, onAssignPress }) {
+  return (
+    <View style={[s.classCard, isSelected && s.classCardSelected]}>
+      <View style={s.classCardHeader}>
+        <View style={s.classInitials}>
+          <Text style={s.classInitialsText}>
+            {(item.className || "CL").slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={s.classCardName}>{item.className}</Text>
+          {!!item.facultyName && (
+            <Text style={s.classCardFaculty}>{item.facultyName}</Text>
+          )}
+        </View>
+
+        {isLecturer && (
+          <View style={s.assignedPill}>
+            <Text style={s.assignedPillText}>Assigned</Text>
+          </View>
+        )}
+      </View>
+
+      {(item.venue || item.day || item.time) && (
+        <View style={s.metaRow}>
+          {!!item.venue && (
+            <View style={s.metaChip}>
+              <Text style={s.metaChipText}>{item.venue}</Text>
+            </View>
+          )}
+          {(item.day || item.time) && (
+            <View style={s.metaChip}>
+              <Text style={s.metaChipText}>
+                {[item.day, item.time].filter(Boolean).join("  ·  ")}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {!isLecturer && (
+        <TouchableOpacity
+          style={[s.assignToggleBtn, isSelected && s.assignToggleBtnActive]}
+          onPress={onAssignPress}
+          activeOpacity={0.8}
+        >
+          <Text style={[s.assignToggleText, isSelected && s.assignToggleTextActive]}>
+            {isSelected ? "Close student list" : "Assign students →"}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function StudentRow({ student, isAssigned, onAssign }) {
+  const initials = getInitials(student.username, student.email);
+  return (
+    <View style={s.studentRow}>
+      <View style={s.avatar}>
+        <Text style={s.avatarText}>{initials}</Text>
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={s.studentName}>{student.username || student.email}</Text>
+        {student.username && student.email && (
+          <Text style={s.studentEmail}>{student.email}</Text>
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={[s.assignBtn, isAssigned && s.assignBtnDone]}
+        onPress={() => !isAssigned && onAssign()}
+        disabled={isAssigned}
+        activeOpacity={0.8}
+      >
+        <Text style={[s.assignBtnText, isAssigned && s.assignBtnTextDone]}>
+          {isAssigned ? "✓ Assigned" : "Assign"}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function ClassScheduleScreen() {
+  const [fetching, setFetching]   = useState(true);
+  const [loading, setLoading]     = useState(false);
+  const [userRole, setUserRole]   = useState(null);
 
-  const [loading, setLoading]   = useState(false);
-  const [fetching, setFetching] = useState(true);
-
-  const [userRole, setUserRole] = useState(null);
-
-  // Admin sees classSchedules; Lecturer sees courses assigned to them
   const [schedules, setSchedules] = useState([]);
   const [students, setStudents]   = useState([]);
 
@@ -46,401 +162,568 @@ export default function ClassScheduleScreen() {
   const [selectedClassName, setSelectedClassName] = useState("");
   const [assignedMap, setAssignedMap]             = useState({});
 
-  // Form fields (admin only)
   const [className,   setClassName]   = useState("");
   const [facultyName, setFacultyName] = useState("");
   const [venue,       setVenue]       = useState("");
   const [day,         setDay]         = useState("");
   const [time,        setTime]        = useState("");
-  const [courseCode,  setCourseCode]  = useState("");
-  const [courseName,  setCourseName]  = useState("");
 
-  // ─────────────────────────────────────────────
-  // Auth guard → then load correct collection
-  // ─────────────────────────────────────────────
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser) {
-        setFetching(false);
-        Alert.alert("Error", "Not authenticated");
-        return;
-      }
+  // Get user role
+  const getUserRole = async () => {
+    const role = await AsyncStorage.getItem("user_role");
+    setUserRole(role || "student");
+    return role;
+  };
 
-      const uid = firebaseUser.uid;
-
-      try {
-        // 1. Get role
-        const userDoc  = await getDoc(doc(db, "users", uid));
-        const userData = userDoc.exists() ? userDoc.data() : {};
-        const role     = userData.role || "student";
-        setUserRole(role);
-
-        if (role === "lecturer") {
-          // ── LECTURER: query the `courses` collection by lecturerId ──
-          // This is where PL saves assigned courses with lecturerId field
-          const q = query(
-            collection(db, "courses"),
-            where("lecturerId", "==", uid)
-          );
-          const snap = await getDocs(q);
-          const results = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setSchedules(results);
-
-        } else {
-          // ── ADMIN / PL: query `classSchedules` (all classes) ──
-          const snap    = await getDocs(collection(db, "classSchedules"));
-          const results = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setSchedules(results);
-
-          // Also load students for assignment
-          const userSnap    = await getDocs(collection(db, "users"));
-          const studentList = userSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((u) => u.role === "student");
-          setStudents(studentList);
-
-          const map = {};
-          studentList.forEach((s) => { if (s.classId) map[s.id] = s.classId; });
-          setAssignedMap(map);
-        }
-
-      } catch (error) {
-        Alert.alert("Load Error", error.message);
-      } finally {
-        setFetching(false);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // ─────────────────────────────────────────────
-  // Create class (admin only → classSchedules)
-  // ─────────────────────────────────────────────
-  const createSchedule = async () => {
-    if (!className || !facultyName || !venue || !day || !time) {
-      Alert.alert("Missing Info", "Please fill all fields");
-      return;
-    }
+  // Load classes
+  const loadClasses = async () => {
     try {
-      setLoading(true);
-      const payload = { className, facultyName, venue, day, time, courseCode, courseName, createdAt: new Date().toISOString() };
-      const docRef = await addDoc(collection(db, "classSchedules"), payload);
-      setSchedules((prev) => [...prev, { id: docRef.id, ...payload }]);
-      setClassName(""); setFacultyName(""); setVenue("");
-      setDay(""); setTime(""); setCourseCode(""); setCourseName("");
-      Alert.alert("Success", "Class created successfully");
+      const response = await api.get("/classes");
+      if (response.data.success) {
+        setSchedules(response.data.classes);
+      }
     } catch (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Error", error.response?.data?.error || "Failed to load classes");
+    }
+  };
+
+  // Load students (for PL only)
+  const loadStudents = async (classId) => {
+    try {
+      const response = await api.get(`/classes/${classId}/students`);
+      if (response.data.success) {
+        setStudents(response.data.students);
+        
+        const map = {};
+        response.data.students.forEach(student => {
+          if (student.assigned) map[student.id] = classId;
+        });
+        setAssignedMap(map);
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load students");
+    }
+  };
+
+  // Create new class
+  const createClass = async () => {
+    if (!className || !facultyName || !venue || !day || !time) {
+      return Alert.alert("Missing fields", "Please fill all fields.");
+    }
+
+    setLoading(true);
+    try {
+      const response = await api.post("/classes", {
+        className,
+        facultyName,
+        venue,
+        day,
+        time
+      });
+
+      if (response.data.success) {
+        setSchedules(prev => [...prev, response.data.class]);
+        setClassName("");
+        setFacultyName("");
+        setVenue("");
+        setDay("");
+        setTime("");
+        Alert.alert("Success", "Class created successfully.");
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to create class");
     } finally {
       setLoading(false);
     }
   };
 
-  // ─────────────────────────────────────────────
-  // Assign student (admin only)
-  // ─────────────────────────────────────────────
+  // Assign student to class
   const assignStudent = async (studentId, classId) => {
     try {
-      await updateDoc(doc(db, "users", studentId), { classId });
-      setAssignedMap((prev) => ({ ...prev, [studentId]: classId }));
+      const response = await api.post("/classes/assign", { studentId, classId });
+      if (response.data.success) {
+        setAssignedMap(prev => ({ ...prev, [studentId]: classId }));
+        Alert.alert("Success", "Student assigned successfully");
+      }
     } catch (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Error", error.response?.data?.error || "Failed to assign student");
     }
   };
 
-  // ─────────────────────────────────────────────
+  // Handle class selection (for PL)
+  const handleClassSelect = async (classId, className) => {
+    if (selectedClassId === classId) {
+      setSelectedClassId(null);
+      setSelectedClassName("");
+    } else {
+      setSelectedClassId(classId);
+      setSelectedClassName(className);
+      await loadStudents(classId);
+    }
+  };
+
+  // Initialize
+  useEffect(() => {
+    const init = async () => {
+      const role = await getUserRole();
+      await loadClasses();
+      setFetching(false);
+    };
+    init();
+  }, []);
+
   if (fetching) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#60a5fa" />
-        <Text style={styles.loadingText}>Loading...</Text>
+      <View style={s.centered}>
+        <ActivityIndicator size="large" color={C.navy} />
       </View>
     );
   }
 
   const isLecturer = userRole === "lecturer";
+  const isPL = userRole === "pl";
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={s.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      {/* ── PAGE HEADER ── */}
-      <View style={styles.pageHeader}>
-        <View>
-          <Text style={styles.pageTitle}>
-            {isLecturer ? "My Classes" : "Class & Timetable"}
-          </Text>
-          <Text style={styles.pageSub}>
-            {isLecturer
-              ? "Classes assigned to you by PL"
-              : "Create classes · assign students"}
-          </Text>
-        </View>
-        <View style={styles.pageIcon} />
+      <View style={s.header}>
+        <Text style={s.eyebrow}>
+          {isLecturer ? "Lecturer Portal" : "Programme Leader"}
+        </Text>
+        <Text style={s.headerTitle}>
+          {isLecturer ? "My Classes" : "Class & Timetable"}
+        </Text>
+        <Text style={s.headerSub}>
+          {isLecturer
+            ? "Classes assigned to you by your PL"
+            : "Create classes and assign students"}
+        </Text>
       </View>
 
-      {/* ══════════════════════════════════════════
-          1. CLASS / COURSE LIST  (shown first)
-      ══════════════════════════════════════════ */}
-      <Text style={styles.sectionLabel}>
-        {isLecturer ? "YOUR ASSIGNED COURSES" : "SCHEDULED CLASSES"}
-      </Text>
+      <ScrollView
+        contentContainerStyle={s.body}
+        showsVerticalScrollIndicator={false}
+      >
+        <SectionLabel text={isLecturer ? "Your Assigned Courses" : "Scheduled Classes"} />
 
-      {schedules.length === 0 ? (
-        <View style={styles.emptyStateCard}>
-          <View style={styles.emptyStateIconBox} />
-          <Text style={styles.emptyStateTitle}>
-            {isLecturer ? "No courses assigned yet" : "No classes created yet"}
-          </Text>
-          <Text style={styles.emptyStateText}>
-            {isLecturer
-              ? "Your PL has not assigned any courses to you yet.\nCheck back later or contact your programme leader."
-              : "Use the form below to create your first class."}
-          </Text>
-        </View>
-      ) : (
-        schedules.map((item) => {
-          const isActive = selectedClassId === item.id;
-          return (
-            <View
+        {schedules.length === 0 ? (
+          <View style={s.emptyCard}>
+            <Text style={s.emptyTitle}>
+              {isLecturer ? "No courses assigned yet" : "No classes created yet"}
+            </Text>
+            <Text style={s.emptyText}>
+              {isLecturer
+                ? "Your programme leader hasn't assigned any courses to you yet."
+                : "Use the form below to create your first class."}
+            </Text>
+          </View>
+        ) : (
+          schedules.map((item) => (
+            <ClassCard
               key={item.id}
-              style={[styles.classCard, isActive && styles.classCardActive]}
-            >
-              {/* Card top */}
-              <View style={styles.classCardTop}>
+              item={item}
+              isLecturer={isLecturer}
+              isSelected={selectedClassId === item.id}
+              onAssignPress={() => handleClassSelect(item.id, item.className)}
+            />
+          ))
+        )}
+
+        {!isLecturer && isPL && selectedClassId && (
+          <>
+            <SectionLabel text={`Assign Students — ${selectedClassName}`} />
+
+            <View style={s.studentPanel}>
+              <View style={s.panelHeader}>
+                <Text style={s.panelHeaderTitle}>Available Students</Text>
+                <Text style={s.panelHeaderCount}>{students.length} total</Text>
+              </View>
+
+              {students.length === 0 ? (
+                <Text style={s.emptyText}>No students found.</Text>
+              ) : (
+                students.map((st) => (
+                  <StudentRow
+                    key={st.id}
+                    student={st}
+                    isAssigned={assignedMap[st.id] === selectedClassId}
+                    onAssign={() => assignStudent(st.id, selectedClassId)}
+                  />
+                ))
+              )}
+            </View>
+          </>
+        )}
+
+        {!isLecturer && isPL && (
+          <>
+            <FormSection title="Create New Class" />
+
+            <View style={s.formCard}>
+              <View style={s.row}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.classCardName}>{item.className}</Text>
-                  {(item.courseCode || item.courseName) && (
-                    <Text style={styles.classCardCourse}>
-                      {[item.courseCode, item.courseName].filter(Boolean).join(" · ")}
-                    </Text>
-                  )}
+                  <Field
+                    label="Class Name"
+                    value={className}
+                    onChangeText={setClassName}
+                    placeholder="e.g. BSCSMY1"
+                  />
                 </View>
-                {isActive && (
-                  <View style={styles.selectedBadge}>
-                    <Text style={styles.selectedBadgeText}>Selected</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Meta chips */}
-              <View style={styles.metaRow}>
-                {item.facultyName  && <View style={styles.chip}><Text style={styles.chipText}>{item.facultyName}</Text></View>}
-                {item.day && item.time && <View style={styles.chip}><Text style={styles.chipText}>{item.day}  {item.time}</Text></View>}
-                {item.venue        && <View style={[styles.chip, styles.chipVenue]}><Text style={[styles.chipText, styles.chipTextVenue]}>{item.venue}</Text></View>}
-                {item.lecturerName && <View style={[styles.chip, styles.chipLecturer]}><Text style={[styles.chipText, styles.chipTextLecturer]}>{item.lecturerName}</Text></View>}
-              </View>
-
-              {/* Lecturer: read-only badge strip */}
-              {isLecturer && (
-                <View style={styles.lecturerBadgeRow}>
-                  <View style={styles.lecturerBadge}>
-                    <Text style={styles.lecturerBadgeText}>Assigned to you</Text>
-                  </View>
+                <View style={{ width: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Faculty"
+                    value={facultyName}
+                    onChangeText={setFacultyName}
+                    placeholder="e.g. FICT"
+                  />
                 </View>
-              )}
+              </View>
 
-              {/* Admin: assign students button */}
-              {!isLecturer && (
-                <TouchableOpacity
-                  style={[styles.assignClassBtn, isActive && styles.assignClassBtnActive]}
-                  onPress={() => {
-                    if (isActive) { setSelectedClassId(null); setSelectedClassName(""); }
-                    else { setSelectedClassId(item.id); setSelectedClassName(item.className); }
-                  }}
-                >
-                  <Text style={[styles.assignClassBtnText, isActive && styles.assignClassBtnTextActive]}>
-                    {isActive ? "Close student list" : "Assign students"}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              <Field
+                label="Venue"
+                value={venue}
+                onChangeText={setVenue}
+                placeholder="e.g. Room 1"
+              />
+
+              <View style={s.row}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Day"
+                    value={day}
+                    onChangeText={setDay}
+                    placeholder="e.g. Monday"
+                  />
+                </View>
+                <View style={{ width: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Time"
+                    value={time}
+                    onChangeText={setTime}
+                    placeholder="e.g. 08:00–10:00"
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[s.submitBtn, loading && { opacity: 0.6 }]}
+                onPress={createClass}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={s.submitText}>
+                  {loading ? "Saving…" : "Create Class"}
+                </Text>
+              </TouchableOpacity>
             </View>
-          );
-        })
-      )}
-
-      {/* ── ASSIGN STUDENTS PANEL (admin only) ── */}
-      {!isLecturer && selectedClassId && (
-        <>
-          <Text style={styles.sectionLabel}>ASSIGN STUDENTS — {selectedClassName}</Text>
-          <View style={styles.studentPanel}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelHeaderTitle}>Available students</Text>
-              <Text style={styles.panelHeaderCount}>{students.length} students</Text>
-            </View>
-
-            {students.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No students found</Text>
-              </View>
-            ) : (
-              students.map((s) => {
-                const isAssigned = assignedMap[s.id] === selectedClassId;
-                const initials   = getInitials(s.username, s.email);
-                return (
-                  <View key={s.id} style={styles.studentRow}>
-                    <View style={styles.studentAvatar}>
-                      <Text style={styles.studentAvatarText}>{initials}</Text>
-                    </View>
-                    <View style={styles.studentInfo}>
-                      <Text style={styles.studentName}>{s.username || s.email}</Text>
-                      {s.username && s.email && (
-                        <Text style={styles.studentEmail}>{s.email}</Text>
-                      )}
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.assignBtn, isAssigned && styles.assignBtnDone]}
-                      onPress={() => !isAssigned && assignStudent(s.id, selectedClassId)}
-                      disabled={isAssigned}
-                    >
-                      <Text style={[styles.assignBtnText, isAssigned && styles.assignBtnTextDone]}>
-                        {isAssigned ? "Assigned" : "Assign"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        </>
-      )}
-
-      {/* ══════════════════════════════════════════
-          2. CREATE CLASS FORM (admin only, shown last)
-      ══════════════════════════════════════════ */}
-      {!isLecturer && (
-        <>
-          <Text style={styles.sectionLabel}>CREATE NEW CLASS</Text>
-          <View style={styles.formCard}>
-
-            <View style={styles.row2}>
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Class name</Text>
-                <TextInput style={styles.input} placeholder="e.g. BSCSMY1"
-                  placeholderTextColor="#334155" value={className} onChangeText={setClassName} />
-              </View>
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Faculty</Text>
-                <TextInput style={styles.input} placeholder="FICT"
-                  placeholderTextColor="#334155" value={facultyName} onChangeText={setFacultyName} />
-              </View>
-            </View>
-
-            <View style={styles.row2}>
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Course code</Text>
-                <TextInput style={styles.input} placeholder="BIS3001"
-                  placeholderTextColor="#334155" value={courseCode} onChangeText={setCourseCode} />
-              </View>
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Course name</Text>
-                <TextInput style={styles.input} placeholder="Security"
-                  placeholderTextColor="#334155" value={courseName} onChangeText={setCourseName} />
-              </View>
-            </View>
-
-            <Text style={styles.fieldLabel}>Venue</Text>
-            <TextInput style={styles.input} placeholder="Room1"
-              placeholderTextColor="#334155" value={venue} onChangeText={setVenue} />
-
-            <View style={styles.row2}>
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Day</Text>
-                <TextInput style={styles.input} placeholder="Monday"
-                  placeholderTextColor="#334155" value={day} onChangeText={setDay} />
-              </View>
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>Time</Text>
-                <TextInput style={styles.input} placeholder="08:00 – 10:00"
-                  placeholderTextColor="#334155" value={time} onChangeText={setTime} />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.createBtn, loading && styles.createBtnDisabled]}
-              onPress={createSchedule}
-              disabled={loading}
-            >
-              <Text style={styles.createBtnText}>
-                {loading ? "Saving..." : "+ Create class"}
-              </Text>
-            </TouchableOpacity>
-
-          </View>
-        </>
-      )}
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#070b18", padding: 16 },
-  center: { flex: 1, backgroundColor: "#070b18", justifyContent: "center", alignItems: "center", gap: 12 },
-  loadingText: { color: "#64748b", fontSize: 14 },
+const s = StyleSheet.create({
+  screen:   { flex: 1, backgroundColor: C.bg },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
 
-  pageHeader: { backgroundColor: "#0f172a", borderWidth: 0.5, borderColor: "#1e293b", borderRadius: 14, padding: 16, marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pageTitle:  { color: "#f1f5f9", fontSize: 17, fontWeight: "700" },
-  pageSub:    { color: "#475569", fontSize: 12, marginTop: 2 },
-  pageIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: "#1d4ed8" },
+  header: {
+    backgroundColor: C.navy,
+    paddingTop: 52,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: C.white,
+    marginBottom: 4,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
+  },
 
-  sectionLabel: { fontSize: 11, fontWeight: "600", color: "#475569", letterSpacing: 0.8, marginBottom: 10, marginTop: 4 },
+  body: { padding: 16, paddingBottom: 48 },
 
-  classCard: { backgroundColor: "#0f172a", borderWidth: 0.5, borderColor: "#1e293b", borderLeftWidth: 3, borderLeftColor: "#2563eb", borderRadius: 14, padding: 14, marginBottom: 8 },
-  classCardActive: { borderLeftColor: "#16a34a", backgroundColor: "#0a1f10" },
-  classCardTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 6 },
-  classCardName:   { fontSize: 14, fontWeight: "600", color: "#93c5fd" },
-  classCardCourse: { fontSize: 11, color: "#60a5fa", marginTop: 2, opacity: 0.8 },
-  selectedBadge: { backgroundColor: "#052e16", borderWidth: 0.5, borderColor: "#166534", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, marginLeft: 8 },
-  selectedBadgeText: { fontSize: 10, color: "#4ade80", fontWeight: "600" },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1,
+    color: C.muted,
+    textTransform: "uppercase",
+    marginTop: 20,
+    marginBottom: 10,
+  },
 
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
-  chip: { backgroundColor: "#1e293b", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  chipText: { fontSize: 11, color: "#94a3b8" },
-  chipVenue: { backgroundColor: "#0c2240" },
-  chipTextVenue: { color: "#60a5fa" },
-  chipLecturer: { backgroundColor: "#1a1040" },
-  chipTextLecturer: { color: "#a5b4fc" },
+  classCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+  },
+  classCardSelected: {
+    borderColor: C.navy,
+    borderLeftWidth: 3,
+    borderLeftColor: C.gold,
+  },
+  classCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 10,
+  },
+  classInitials: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: C.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  classInitialsText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.gold,
+  },
+  classCardName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 2,
+  },
+  classCardFaculty: {
+    fontSize: 12,
+    color: C.muted,
+  },
+  assignedPill: {
+    backgroundColor: C.greenBg,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  assignedPillText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: C.green,
+  },
 
-  lecturerBadgeRow: { flexDirection: "row" },
-  lecturerBadge: { backgroundColor: "#0c2240", borderWidth: 0.5, borderColor: "#1e4080", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  lecturerBadgeText: { fontSize: 10, color: "#60a5fa", fontWeight: "600" },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
+  metaChip: {
+    backgroundColor: C.badge,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  metaChipText: {
+    fontSize: 11,
+    color: C.muted,
+    fontWeight: "500",
+  },
 
-  assignClassBtn: { backgroundColor: "#0f2d18", borderWidth: 0.5, borderColor: "#166534", borderRadius: 8, padding: 8, alignItems: "center" },
-  assignClassBtnActive: { backgroundColor: "#1e293b", borderColor: "#334155" },
-  assignClassBtnText: { fontSize: 12, fontWeight: "500", color: "#4ade80" },
-  assignClassBtnTextActive: { color: "#64748b" },
+  assignToggleBtn: {
+    backgroundColor: C.badge,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  assignToggleBtnActive: {
+    backgroundColor: C.navy,
+    borderColor: C.navy,
+  },
+  assignToggleText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.navy,
+  },
+  assignToggleTextActive: {
+    color: C.white,
+  },
 
-  emptyStateCard: { backgroundColor: "#0f172a", borderWidth: 0.5, borderColor: "#1e293b", borderRadius: 14, padding: 32, alignItems: "center", marginBottom: 16 },
-  emptyStateIconBox: { width: 36, height: 36, borderRadius: 8, backgroundColor: "#1e293b", marginBottom: 12 },
-  emptyStateTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "600", marginBottom: 6 },
-  emptyStateText:  { color: "#475569", fontSize: 12, textAlign: "center", lineHeight: 18 },
+  emptyCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 28,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  emptyText: {
+    fontSize: 13,
+    color: C.muted,
+    textAlign: "center",
+    lineHeight: 20,
+  },
 
-  studentPanel: { backgroundColor: "#0f172a", borderWidth: 0.5, borderColor: "#1e293b", borderRadius: 14, overflow: "hidden", marginBottom: 16 },
-  panelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, paddingHorizontal: 14, borderBottomWidth: 0.5, borderBottomColor: "#1e293b" },
-  panelHeaderTitle: { fontSize: 13, fontWeight: "500", color: "#f1f5f9" },
-  panelHeaderCount: { fontSize: 11, color: "#475569" },
-  emptyState: { padding: 24, alignItems: "center" },
-  emptyText:  { color: "#475569", fontSize: 13 },
-  studentRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 0.5, borderBottomColor: "#0f172a" },
-  studentAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#1a1040", alignItems: "center", justifyContent: "center", marginRight: 10, flexShrink: 0 },
-  studentAvatarText: { fontSize: 10, fontWeight: "600", color: "#a5b4fc" },
-  studentInfo: { flex: 1 },
-  studentName:  { fontSize: 13, color: "#f1f5f9" },
-  studentEmail: { fontSize: 11, color: "#475569", marginTop: 1 },
-  assignBtn: { backgroundColor: "#1d4ed8", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginLeft: 8 },
-  assignBtnDone: { backgroundColor: "#052e16", borderWidth: 0.5, borderColor: "#166534" },
-  assignBtnText: { fontSize: 11, fontWeight: "600", color: "#bfdbfe" },
-  assignBtnTextDone: { color: "#4ade80" },
+  studentPanel: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  panelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  panelHeaderTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.text,
+  },
+  panelHeaderCount: {
+    fontSize: 12,
+    color: C.muted,
+  },
 
-  formCard: { backgroundColor: "#0f172a", borderWidth: 0.5, borderColor: "#1e293b", borderRadius: 14, padding: 14, marginBottom: 16 },
-  row2: { flexDirection: "row", gap: 8 },
-  fieldWrap: { flex: 1 },
-  fieldLabel: { fontSize: 11, color: "#475569", fontWeight: "500", marginBottom: 4, marginTop: 4 },
-  input: { backgroundColor: "#111827", borderWidth: 0.5, borderColor: "#1e293b", borderRadius: 8, padding: 10, fontSize: 13, color: "#f1f5f9", marginBottom: 8 },
-  createBtn: { backgroundColor: "#1d4ed8", borderRadius: 10, padding: 12, alignItems: "center", marginTop: 4 },
-  createBtnDisabled: { opacity: 0.5 },
-  createBtnText: { color: "#bfdbfe", fontSize: 13, fontWeight: "600" },
+  studentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    gap: 10,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.badge,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  avatarText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: C.navy,
+  },
+  studentName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: C.text,
+  },
+  studentEmail: {
+    fontSize: 11,
+    color: C.muted,
+    marginTop: 1,
+  },
+  assignBtn: {
+    backgroundColor: C.navy,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+  assignBtnDone: {
+    backgroundColor: C.greenBg,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  assignBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.white,
+  },
+  assignBtnTextDone: {
+    color: C.green,
+  },
+
+  formSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 24,
+    marginBottom: 12,
+    gap: 10,
+  },
+  formSectionText: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    color: C.navy,
+    textTransform: "uppercase",
+    flexShrink: 0,
+  },
+  formSectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: C.border,
+  },
+
+  formCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 16,
+  },
+
+  row: { flexDirection: "row" },
+
+  field: { marginBottom: 14 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.text,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: C.text,
+  },
+
+  submitBtn: {
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  submitText: {
+    color: C.white,
+    fontWeight: "700",
+    fontSize: 14,
+    letterSpacing: 0.4,
+  },
 });

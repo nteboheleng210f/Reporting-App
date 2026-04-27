@@ -9,42 +9,35 @@ import {
   ScrollView,
   SafeAreaView,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
-import { signOut } from "firebase/auth";
-import { auth, db } from "../firebase/config";
-import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
-
-
-const NavItem = ({ icon, label, active, onPress }) => (
+const NavItem = ({ label, active, onPress }) => (
   <TouchableOpacity
     style={[styles.navItem, active && styles.navItemActive]}
     onPress={onPress}
     activeOpacity={0.7}
   >
-    <Text style={styles.navIcon}>{icon}</Text>
     <Text style={[styles.navLabel, active && styles.navLabelActive]}>
       {label}
     </Text>
   </TouchableOpacity>
 );
 
-
-const StatCard = ({ icon, value, label, sub, color }) => (
+const StatCard = ({ value, label, sub, color }) => (
   <View style={[styles.statCard, { backgroundColor: color }]}>
-    <Text style={styles.statIcon}>{icon}</Text>
     <Text style={styles.statNumber}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
     {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
   </View>
 );
 
-const ActionCard = ({ icon, label, onPress }) => (
+const ActionCard = ({ label, onPress }) => (
   <TouchableOpacity
     style={styles.actionCard}
     onPress={onPress}
     activeOpacity={0.75}
   >
-    <Text style={styles.actionIcon}>{icon}</Text>
     <Text style={styles.actionLabel}>{label}</Text>
   </TouchableOpacity>
 );
@@ -71,157 +64,104 @@ const UpcomingClassCard = ({ classData, loading }) => {
     <View style={styles.upcomingCard}>
       <View style={styles.upcomingLeft}>
         <Text style={styles.upcomingCourse}>
-  {classData.courseName} ({classData.courseCode})
-</Text>
-
-<Text style={styles.upcomingCode}>
-  {classData.day} • {classData.time}
-</Text>
-
-<Text style={styles.upcomingVenue}>
-   {classData.venue}
-</Text>
+          {classData.courseName || classData.className} 
+          {classData.courseCode ? ` (${classData.courseCode})` : ''}
+        </Text>
+        <Text style={styles.upcomingCode}>
+          {classData.day} • {classData.time}
+        </Text>
+        <Text style={styles.upcomingVenue}>{classData.venue}</Text>
       </View>
     </View>
   );
 };
+
 export default function StudentDashboard({ navigation }) {
-
-  const user = auth.currentUser;
-
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [classLoading, setClassLoading] = useState(true);
   const [activeNav, setActiveNav] = useState("Dashboard");
-
   const [attendancePercent, setAttendancePercent] = useState(0);
   const [ratingsCount, setRatingsCount] = useState(0);
   const [upcomingClass, setUpcomingClass] = useState(null);
+  const [userEmail, setUserEmail] = useState("");
 
   const navItems = [
-    {  label: "Dashboard"  },
-    {  label: "Attendance" },
-    {  label: "Ratings"    },
-    {  label: "Monitoring" },
+    { label: "Dashboard" },
+    { label: "Attendance" },
+    { label: "Ratings" },
+    { label: "Monitoring" },
   ];
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        // ATTENDANCE
-        const attSnap = await getDocs(collection(db, "attendance"));
-        const myAttendance = attSnap.docs
-          .map((doc) => doc.data())
-          .filter((a) => a.studentId === user.uid);
-
-        const present = myAttendance.filter(
-          (a) => a.status === "Present"
-        ).length;
-        const total = myAttendance.length;
-        setAttendancePercent(
-          total ? ((present / total) * 100).toFixed(1) : 0
-        );
-
-       
-        const ratingSnap = await getDocs(collection(db, "ratings"));
-        const myRatings = ratingSnap.docs
-          .map((doc) => doc.data())
-          .filter((r) => r.studentId === user.uid);
-        setRatingsCount(myRatings.length);
-
-      } catch (error) {
-        Alert.alert("Error", error.message);
-      } finally {
-        setStatsLoading(false);
+  const fetchStats = async () => {
+    try {
+      // Try to get attendance stats
+      const attendanceRes = await api.get("/attendance/student");
+      if (attendanceRes.data.success && attendanceRes.data.attendance) {
+        const attendance = attendanceRes.data.attendance;
+        const present = attendance.filter(a => a.status === "Present").length;
+        const total = attendance.length;
+        const percent = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
+        setAttendancePercent(percent);
       }
-    };
+    } catch (error) {
+      console.log("Failed to load attendance stats");
+    }
 
-    fetchStats();
-  }, []);
-useEffect(() => {
+    try {
+      // Try to get ratings count
+      const ratingsRes = await api.get("/ratings");
+      if (ratingsRes.data.success) {
+        setRatingsCount(ratingsRes.data.ratings.length);
+      }
+    } catch (error) {
+      console.log("Failed to load ratings stats");
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   const fetchUpcomingClass = async () => {
     try {
-      const studentClass = user?.className || user?.classId;
-
-      const snap = await getDocs(collection(db, "classSchedules"));
-
-      const all = snap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-
-      // filter student class
-      const myClasses = all.filter(c =>
-        c.className === studentClass || c.classId === studentClass
-      );
-
-      if (myClasses.length === 0) {
-        setUpcomingClass(null);
-        return;
+      // Get all classes and find upcoming
+      const response = await api.get("/classes");
+      if (response.data.success && response.data.classes.length > 0) {
+        // Just show first class as upcoming for demo
+        setUpcomingClass(response.data.classes[0]);
       }
-
-      // Day order
-      const order = {
-        MONDAY: 1,
-        TUESDAY: 2,
-        WEDNESDAY: 3,
-        THURSDAY: 4,
-        FRIDAY: 5,
-        SATURDAY: 6,
-        SUNDAY: 7,
-      };
-
-      const today = new Date();
-      const currentDay = Object.keys(order)[today.getDay() - 1]?.toUpperCase();
-
-      // helper to extract start time from "12:00 -14:00"
-      const getStartTime = (t) => {
-        if (!t) return "00:00";
-        return t.split("-")[0].trim(); // "12:00"
-      };
-
-      // sort classes
-      const sorted = myClasses.sort((a, b) => {
-        const dayDiff = order[a.day] - order[b.day];
-        if (dayDiff !== 0) return dayDiff;
-
-        return getStartTime(a.time).localeCompare(getStartTime(b.time));
-      });
-
-      // find next class
-      let next = sorted.find(c =>
-        order[c.day] > order[currentDay] ||
-        (c.day === currentDay &&
-          getStartTime(c.time) >= today.toTimeString().slice(0, 5))
-      );
-
-      // fallback
-      if (!next) next = sorted[0];
-
-      setUpcomingClass(next || null);
-
-    } catch (err) {
-      console.log("Upcoming class error:", err);
+    } catch (error) {
+      console.log("Upcoming class error:", error);
       setUpcomingClass(null);
     } finally {
       setClassLoading(false);
     }
   };
 
-  fetchUpcomingClass();
-}, []);
+  const getUserData = async () => {
+    const userData = await AsyncStorage.getItem("user_data");
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserEmail(user.email || "");
+    }
+  };
+
+  useEffect(() => {
+    getUserData();
+    fetchStats();
+    fetchUpcomingClass();
+  }, []);
 
   const handleNav = (label) => {
     setActiveNav(label);
     if (label === "Attendance") navigation.navigate("Attendance");
-    if (label === "Ratings")    navigation.navigate("Ratings");
+    if (label === "Ratings") navigation.navigate("Ratings");
     if (label === "Monitoring") navigation.navigate("Monitoring");
   };
 
   const logout = async () => {
     setLoading(true);
     try {
-      await signOut(auth);
+      await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
       navigation.replace("Login");
     } catch (error) {
       Alert.alert("Error", error.message);
@@ -238,12 +178,11 @@ useEffect(() => {
       </View>
     );
   }
+
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.layout}>
-
         <View style={styles.sidebar}>
-
           <View style={styles.logoWrap}>
             <View style={styles.logoCircle}>
               <Text style={styles.logoText}>IS</Text>
@@ -253,47 +192,41 @@ useEffect(() => {
           {navItems.map((item) => (
             <NavItem
               key={item.label}
-              icon={item.icon}
               label={item.label}
               active={activeNav === item.label}
               onPress={() => handleNav(item.label)}
             />
           ))}
-
         </View>
+
         <ScrollView
           style={styles.main}
           contentContainerStyle={styles.mainContent}
           showsVerticalScrollIndicator={false}
         >
-
-          {/* TOP BAR */}
           <View style={styles.topBar}>
             <View>
-              <Text style={styles.greeting}>Welcome back </Text>
+              <Text style={styles.greeting}>Welcome back</Text>
               <Text style={styles.pageTitle}>Your Dashboard</Text>
             </View>
             <View style={styles.userPill}>
               <View style={styles.pillAvatar}>
                 <Text style={styles.pillAvatarText}>
-                  {user?.email?.[0]?.toUpperCase() || "S"}
+                  {userEmail?.[0]?.toUpperCase() || "S"}
                 </Text>
               </View>
               <Text style={styles.pillLabel}>Student</Text>
             </View>
           </View>
 
-          {/* STAT CARDS */}
           <View style={styles.statRow}>
             <StatCard
-              icon=""
               value={`${attendancePercent}%`}
               label="Attendance"
               sub="Present this term"
               color="#4f7cde"
             />
             <StatCard
-              icon=""
               value={ratingsCount}
               label="Ratings Given"
               sub="Lecturer reviews"
@@ -301,30 +234,28 @@ useEffect(() => {
             />
           </View>
 
-          {/* UPCOMING CLASS */}
           <Text style={styles.sectionTitle}>Upcoming Class</Text>
           <UpcomingClassCard
             classData={upcomingClass}
             loading={classLoading}
           />
+
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionGrid}>
             <ActionCard
-              icon=""
               label="Attendance"
               onPress={() => navigation.navigate("Attendance")}
             />
             <ActionCard
-              icon=""
               label="Ratings"
               onPress={() => navigation.navigate("Ratings")}
             />
             <ActionCard
-              icon=""
               label="Monitoring"
               onPress={() => navigation.navigate("Monitoring")}
             />
           </View>
+
           <TouchableOpacity
             style={[styles.logoutBtn, loading && { opacity: 0.6 }]}
             onPress={logout}
@@ -335,18 +266,13 @@ useEffect(() => {
               {loading ? "Logging out..." : "Logout"}
             </Text>
           </TouchableOpacity>
-
         </ScrollView>
       </View>
     </SafeAreaView>
   );
 }
 
-// ─────────────────────────────────────────
-// STYLES
-// ─────────────────────────────────────────
 const styles = StyleSheet.create({
-
   root: {
     flex: 1,
     backgroundColor: "#1a2236",
@@ -355,8 +281,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
   },
-
-  // LOADING
   center: {
     flex: 1,
     justifyContent: "center",
@@ -368,8 +292,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 10,
   },
-
-  // SIDEBAR
   sidebar: {
     width: 72,
     backgroundColor: "#1a2236",
@@ -413,7 +335,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(79,124,222,0.18)",
     borderLeftColor: "#4f7cde",
   },
-  navIcon: { fontSize: 18 },
   navLabel: {
     fontSize: 9,
     color: "rgba(255,255,255,0.4)",
@@ -423,8 +344,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "600",
   },
-
-  // MAIN
   main: {
     flex: 1,
     backgroundColor: "#f1f5f9",
@@ -434,8 +353,6 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 14,
   },
-
-  // TOP BAR
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -474,8 +391,6 @@ const styles = StyleSheet.create({
   },
   pillAvatarText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   pillLabel: { fontSize: 12, color: "#64748b" },
-
-  // STAT CARDS
   statRow: {
     flexDirection: "row",
     gap: 10,
@@ -485,12 +400,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
-  statIcon: { fontSize: 18, marginBottom: 6, opacity: 0.85 },
   statNumber: { fontSize: 24, fontWeight: "700", color: "#ffffff" },
   statLabel: { fontSize: 11, color: "rgba(255,255,255,0.85)", marginTop: 2 },
   statSub: { fontSize: 10, color: "rgba(255,255,255,0.55)", marginTop: 3 },
-
-  // SECTION TITLE
   sectionTitle: {
     fontSize: 10,
     fontWeight: "600",
@@ -499,8 +411,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: -4,
   },
-
-  // UPCOMING CLASS
   upcomingCard: {
     backgroundColor: "#1a2236",
     borderRadius: 12,
@@ -511,13 +421,6 @@ const styles = StyleSheet.create({
     minHeight: 80,
   },
   upcomingLeft: { flex: 1 },
-  upcomingBadge: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#4f7cde",
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
   upcomingCourse: {
     fontSize: 15,
     fontWeight: "700",
@@ -528,15 +431,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "rgba(255,255,255,0.5)",
   },
-  upcomingRight: { alignItems: "flex-end", gap: 6 },
-  upcomingTime: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#4f7cde",
-  },
   upcomingVenue: {
     fontSize: 11,
     color: "rgba(255,255,255,0.55)",
+    marginTop: 4,
   },
   upcomingEmpty: {
     fontSize: 13,
@@ -549,8 +447,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.4)",
     marginLeft: 10,
   },
-
-  // ACTION GRID — 3 cards, each ~30%
   actionGrid: {
     flexDirection: "row",
     gap: 10,
@@ -570,55 +466,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  actionIcon: { fontSize: 22 },
   actionLabel: {
     fontSize: 11,
     fontWeight: "600",
     color: "#0f172a",
     textAlign: "center",
   },
-
-  // NOTICE BOARD
-  noticeBoard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: "#e2e8f0",
-    overflow: "hidden",
-  },
-  noticeItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    padding: 14,
-  },
-  noticeBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(79,124,222,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  noticeBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#4f7cde",
-  },
-  noticeTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginBottom: 3,
-  },
-  noticeSub: { fontSize: 11, color: "#64748b" },
-  noticeDivider: {
-    height: 0.5,
-    backgroundColor: "#e2e8f0",
-    marginHorizontal: 14,
-  },
-
-  // LOGOUT
   logoutBtn: {
     backgroundColor: "rgba(241, 17, 17, 0.08)",
     borderWidth: 0.5,

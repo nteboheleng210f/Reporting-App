@@ -10,19 +10,9 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../services/api";
 
-import { auth, db } from "../firebase/config";
-import {
-  collection,
-  getDocs,
-  addDoc,
-  query,
-  where,
-} from "firebase/firestore";
-
-/* ─────────────────────────────────────────────
-   COLORS — shared token set
-───────────────────────────────────────────── */
 const C = {
   navy:   "#0f1f3d",
   navy2:  "#1a2f52",
@@ -37,9 +27,6 @@ const C = {
   badge:  "#edf0f7",
 };
 
-/* ─────────────────────────────────────────────
-   FIELD — label + input pair
-───────────────────────────────────────────── */
 function Field({ label, value, onChangeText, placeholder, multiline, editable = true, keyboardType }) {
   return (
     <View style={s.field}>
@@ -64,9 +51,6 @@ function Field({ label, value, onChangeText, placeholder, multiline, editable = 
   );
 }
 
-/* ─────────────────────────────────────────────
-   FORM SECTION DIVIDER
-───────────────────────────────────────────── */
 function FormSection({ title }) {
   return (
     <View style={s.formSection}>
@@ -76,9 +60,6 @@ function FormSection({ title }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   COURSE CARD
-───────────────────────────────────────────── */
 function CourseCard({ item, selected, onPress }) {
   return (
     <TouchableOpacity
@@ -104,18 +85,12 @@ function CourseCard({ item, selected, onPress }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   MAIN SCREEN
-───────────────────────────────────────────── */
-export default function LecturerReportScreen() {
-  const user = auth.currentUser;
-
+export default function LecturerReportScreen({ navigation }) {
   const [loading, setLoading]         = useState(true);
   const [submitting, setSubmitting]   = useState(false);
   const [courses, setCourses]         = useState([]);
   const [selectedCourse, setSelected] = useState(null);
 
-  // Form fields
   const [facultyName, setFacultyName]         = useState("");
   const [className, setClassName]             = useState("");
   const [week, setWeek]                       = useState("");
@@ -131,123 +106,99 @@ export default function LecturerReportScreen() {
   const [outcomes, setOutcomes]               = useState("");
   const [recommendations, setRecommendations] = useState("");
 
-  /* ─────────────────────────────────────────
-     LOAD COURSES
-  ──────────────────────────────────────────*/
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const snap = await getDocs(
-          query(collection(db, "courses"), where("lecturerId", "==", user.uid))
-        );
-        setCourses(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        Alert.alert("Error", e.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
-  /* ─────────────────────────────────────────
-     SELECT COURSE — auto-fills form
-  ──────────────────────────────────────────*/
-  const selectCourse = async (course) => {
-    setSelected(course);
-
-    setCourseName(course.courseName || "");
-    setCourseCode(course.courseCode || "");
-    setClassName(course.className   || "");
-    setFacultyName(course.facultyName || "");
-
-    // Lecturer name from course doc, then auth
-    setLecturerName(
-      course.lecturerUsername ||
-      course.lecturerName     ||
-      user.displayName        ||
-      "Lecturer"
-    );
-
-    // Fetch class schedule for venue/time
+  // FIXED: Load courses from /courses endpoint (not /reports/courses)
+  const loadCourses = async () => {
     try {
-      const schedSnap = await getDocs(collection(db, "classSchedules"));
-      const schedule  = schedSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .find((c) => c.id === course.classId);
-
-      if (schedule) {
-        setFacultyName(schedule.facultyName || course.facultyName || "");
-        setVenue(schedule.venue || "");
-        setTime(schedule.time  || "");
+      const response = await api.get("/courses");
+      if (response.data.success) {
+        setCourses(response.data.courses);
       }
-    } catch (_) {}
-
-    // Count registered students
-    try {
-      const studSnap = await getDocs(
-        query(collection(db, "users"), where("classId", "==", course.classId))
-      );
-      setTotalRegistered(String(studSnap.size));
-    } catch (_) {
-      setTotalRegistered("0");
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to load courses");
+    } finally {
+      setLoading(false);
     }
   };
 
-  /* ─────────────────────────────────────────
-     SUBMIT
-  ──────────────────────────────────────────*/
+  const selectCourse = async (course) => {
+    setSelected(course);
+    setCourseName(course.courseName || "");
+    setCourseCode(course.courseCode || "");
+    setClassName(course.className || "");
+    setVenue(course.venue || "");
+    setTime(course.time || "");
+    setFacultyName(course.facultyName || "");
+
+    const userData = await AsyncStorage.getItem("user_data");
+    const user = userData ? JSON.parse(userData) : {};
+    setLecturerName(course.lecturerName || user.username || "Lecturer");
+
+    // Get registered students count for this course's class
+    if (course.classId) {
+      try {
+        const studentsRes = await api.get(`/attendance/course/${course.id}/students`);
+        if (studentsRes.data.success) {
+          setTotalRegistered(String(studentsRes.data.students.length));
+        }
+      } catch (_) {
+        setTotalRegistered("0");
+      }
+    }
+  };
+
   const submitReport = async () => {
-    if (!selectedCourse)
+    if (!selectedCourse) {
       return Alert.alert("Select a course", "Please choose a course first.");
-    if (!topic.trim())
+    }
+    if (!topic.trim()) {
       return Alert.alert("Topic required", "Please enter the topic taught.");
-    if (!actualPresent.trim())
+    }
+    if (!actualPresent.trim()) {
       return Alert.alert("Attendance required", "Please enter students present.");
+    }
 
     setSubmitting(true);
     try {
-      await addDoc(collection(db, "lectureReports"), {
+      const payload = {
         facultyName,
         className,
         week,
-        date,
+        date: date || new Date().toISOString().split('T')[0],
         courseName,
         courseCode,
-        classId:      selectedCourse.classId,
-        lecturerId:   user.uid,
+        classId: selectedCourse.classId,
         lecturerName,
-        actualPresent,
-        totalRegistered,
+        actualPresent: Number(actualPresent),
+        totalRegistered: Number(totalRegistered) || 0,
         venue,
         scheduledTime: time,
         topic,
         outcomes,
-        recommendations,
-        status:      "pending",
-        prlFeedback: "",
-        createdAt:   new Date().toISOString(),
-      });
+        recommendations
+      };
 
-      Alert.alert("Submitted", "Lecture report submitted successfully.");
-
-      // Reset variable fields only — keep course selected
-      setWeek("");
-      setDate("");
-      setTopic("");
-      setOutcomes("");
-      setRecommendations("");
-      setActualPresent("");
-    } catch (e) {
-      Alert.alert("Error", e.message);
+      const response = await api.post("/reports", payload);
+      if (response.data.success) {
+        Alert.alert("Success", "Lecture report submitted successfully.");
+        setWeek("");
+        setDate("");
+        setTopic("");
+        setOutcomes("");
+        setRecommendations("");
+        setActualPresent("");
+        setSelected(null);
+      }
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to submit report");
     } finally {
       setSubmitting(false);
     }
   };
 
-  /* ─────────────────────────────────────────
-     LOADING
-  ──────────────────────────────────────────*/
+  useEffect(() => {
+    loadCourses();
+  }, []);
+
   if (loading) {
     return (
       <View style={s.centered}>
@@ -256,18 +207,12 @@ export default function LecturerReportScreen() {
     );
   }
 
-  /* ─────────────────────────────────────────
-     UI
-  ──────────────────────────────────────────*/
   return (
     <SafeAreaView style={s.screen}>
-      {/* ── Navy Header ── */}
       <View style={s.header}>
         <Text style={s.eyebrow}>Lecturer Portal</Text>
         <Text style={s.headerTitle}>Lecture Report</Text>
-        <Text style={s.headerSub}>
-          {user.displayName || "Submit your lecture report below"}
-        </Text>
+        <Text style={s.headerSub}>Submit your lecture report below</Text>
       </View>
 
       <ScrollView
@@ -275,11 +220,10 @@ export default function LecturerReportScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Course Selection ── */}
         <Text style={s.sectionLabel}>Select Course</Text>
 
         {courses.length === 0 ? (
-          <Text style={s.emptyText}>No courses assigned to you yet.</Text>
+          <Text style={s.emptyText}>No courses available.</Text>
         ) : (
           courses.map((course) => (
             <CourseCard
@@ -291,10 +235,8 @@ export default function LecturerReportScreen() {
           ))
         )}
 
-        {/* ── Form — only shown after course selected ── */}
         {selectedCourse && (
           <>
-            {/* ── CLASS INFO ── */}
             <FormSection title="Class Information" />
 
             <View style={s.row}>
@@ -338,7 +280,6 @@ export default function LecturerReportScreen() {
               </View>
             </View>
 
-            {/* ── COURSE INFO ── */}
             <FormSection title="Course Information" />
 
             <View style={s.row}>
@@ -368,7 +309,6 @@ export default function LecturerReportScreen() {
               editable={false}
             />
 
-            {/* ── ATTENDANCE ── */}
             <FormSection title="Attendance" />
 
             <View style={s.row}>
@@ -393,7 +333,6 @@ export default function LecturerReportScreen() {
               </View>
             </View>
 
-            {/* ── VENUE & TIME ── */}
             <FormSection title="Logistics" />
 
             <View style={s.row}>
@@ -416,7 +355,6 @@ export default function LecturerReportScreen() {
               </View>
             </View>
 
-            {/* ── ACADEMIC CONTENT ── */}
             <FormSection title="Academic Content" />
 
             <Field
@@ -442,7 +380,6 @@ export default function LecturerReportScreen() {
               multiline
             />
 
-            {/* ── SUBMIT ── */}
             <TouchableOpacity
               style={[s.submitBtn, submitting && { opacity: 0.6 }]}
               onPress={submitReport}
@@ -460,14 +397,10 @@ export default function LecturerReportScreen() {
   );
 }
 
-/* ─────────────────────────────────────────────
-   STYLES
-───────────────────────────────────────────── */
 const s = StyleSheet.create({
   screen:  { flex: 1, backgroundColor: C.bg },
-  centered:{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
 
-  // Header
   header: {
     backgroundColor: C.navy,
     paddingTop: 52,
@@ -495,7 +428,6 @@ const s = StyleSheet.create({
 
   body: { padding: 16, paddingBottom: 48 },
 
-  // Section label (course picker)
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
@@ -506,7 +438,6 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
 
-  // Course card
   courseCard: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -560,7 +491,6 @@ const s = StyleSheet.create({
   },
   checkMark: { color: C.white, fontSize: 11, fontWeight: "700" },
 
-  // Form section divider
   formSection: {
     flexDirection: "row",
     alignItems: "center",
@@ -582,13 +512,11 @@ const s = StyleSheet.create({
     backgroundColor: C.border,
   },
 
-  // Row layout
   row: {
     flexDirection: "row",
     marginBottom: 0,
   },
 
-  // Field
   field: {
     marginBottom: 14,
   },
@@ -618,7 +546,6 @@ const s = StyleSheet.create({
     color: C.muted,
   },
 
-  // Submit
   submitBtn: {
     backgroundColor: C.navy,
     borderRadius: 12,
