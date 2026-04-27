@@ -3,17 +3,22 @@ const { db } = require('../config/firebase');
 // Get student dashboard stats
 const getStudentStats = async (req, res) => {
   try {
-    const uid = req.user.uid;
+    // Get student ID from header instead of req.user
+    const studentId = req.headers['x-user-id'];
+    
+    if (!studentId) {
+      return res.status(400).json({ success: false, error: 'Student ID required' });
+    }
 
     // Get user data
-    const userDoc = await db.collection('users').doc(uid).get();
+    const userDoc = await db.collection('users').doc(studentId).get();
     const userData = userDoc.data();
     const classId = userData?.classId;
     const className = userData?.className;
 
-    // Get attendance
+    // Get attendance for this student only
     const attendanceSnap = await db.collection('attendance')
-      .where('studentId', '==', uid)
+      .where('studentId', '==', studentId)
       .get();
     
     const attendance = attendanceSnap.docs.map(doc => doc.data());
@@ -21,9 +26,9 @@ const getStudentStats = async (req, res) => {
     const total = attendance.length;
     const attendancePercent = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
 
-    // Get ratings count
+    // Get ratings count for this student only
     const ratingsSnap = await db.collection('ratings')
-      .where('studentId', '==', uid)
+      .where('studentId', '==', studentId)
       .get();
     const ratingsCount = ratingsSnap.size;
 
@@ -40,6 +45,7 @@ const getStudentStats = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Get student stats error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -47,10 +53,15 @@ const getStudentStats = async (req, res) => {
 // Get upcoming class for student
 const getUpcomingClass = async (req, res) => {
   try {
-    const uid = req.user.uid;
+    // Get student ID from header
+    const studentId = req.headers['x-user-id'];
+    
+    if (!studentId) {
+      return res.json({ success: true, upcomingClass: null });
+    }
 
     // Get student's class
-    const userDoc = await db.collection('users').doc(uid).get();
+    const userDoc = await db.collection('users').doc(studentId).get();
     const studentClass = userDoc.data()?.classId || userDoc.data()?.className;
 
     if (!studentClass) {
@@ -77,24 +88,21 @@ const getUpcomingClass = async (req, res) => {
     };
 
     const today = new Date();
-    const currentDayIndex = today.getDay(); // 0 = Sunday
+    const currentDayIndex = today.getDay();
     const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const currentDay = dayNames[currentDayIndex];
 
-    // Helper to get start time
     const getStartTime = (timeStr) => {
       if (!timeStr) return '00:00';
       return timeStr.split('-')[0].trim();
     };
 
-    // Sort classes by day and time
     const sorted = myClasses.sort((a, b) => {
       const dayDiff = (dayOrder[a.day?.toUpperCase()] || 99) - (dayOrder[b.day?.toUpperCase()] || 99);
       if (dayDiff !== 0) return dayDiff;
       return getStartTime(a.time).localeCompare(getStartTime(b.time));
     });
 
-    // Find next class
     const currentTime = today.toTimeString().slice(0, 5);
     let nextClass = sorted.find(c => {
       const classDay = c.day?.toUpperCase();
@@ -103,18 +111,17 @@ const getUpcomingClass = async (req, res) => {
       return false;
     });
 
-    // If no class found today, take first class of next day
     if (!nextClass) {
       nextClass = sorted.find(c => dayOrder[c.day?.toUpperCase()] > dayOrder[currentDay]);
     }
 
-    // If still none, take first class of the week
     if (!nextClass && sorted.length > 0) {
       nextClass = sorted[0];
     }
 
     res.json({ success: true, upcomingClass: nextClass || null });
   } catch (error) {
+    console.error('Get upcoming class error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };

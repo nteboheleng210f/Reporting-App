@@ -1,9 +1,15 @@
 const express = require('express');
 const router = express.Router();
-// const { authenticateToken } = require('../middleware/auth');
 const { getStudentStats, getUpcomingClass } = require('../controllers/studentDashboardController');
 
-// router.use(authenticateToken);
+// Add middleware to extract student ID from header
+router.use((req, res, next) => {
+  const studentId = req.headers['x-user-id'];
+  if (studentId) {
+    req.user = { uid: studentId };
+  }
+  next();
+});
 
 router.get('/stats', getStudentStats);
 router.get('/upcoming-class', getUpcomingClass);
