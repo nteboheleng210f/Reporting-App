@@ -79,9 +79,21 @@ const assignStudent = async (req, res) => {
 };
 
 // Get single class by ID
+// Get single class by ID - ONLY if student is assigned to it
 const getClassById = async (req, res) => {
   try {
     const { classId } = req.params;
+    const studentId = req.headers['x-user-id'];
+    
+    // Get student's assigned class
+    const userDoc = await db.collection('users').doc(studentId).get();
+    const studentClassId = userDoc.data()?.classId;
+    
+    // If student has no class or class doesn't match, deny access
+    if (!studentClassId || studentClassId !== classId) {
+      return res.status(403).json({ success: false, error: 'Access denied - not your class' });
+    }
+    
     const docSnap = await db.collection('classSchedules').doc(classId).get();
 
     if (!docSnap.exists) {
