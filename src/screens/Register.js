@@ -8,14 +8,12 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import authService from "../services/authService";
 
 const C = {
   navy:   "#0f1f3d",
-  navy2:  "#1a2f52",
   gold:   "#c9a84c",
   white:  "#ffffff",
   bg:     "#f5f7fb",
@@ -23,10 +21,22 @@ const C = {
   border: "#e4e8f0",
   text:   "#102040",
   muted:  "#6c7a96",
-  badge:  "#edf0f7",
 };
 
-function Field({ label, value, onChangeText, placeholder, keyboardType, secure, autoCapitalize }) {
+function AlertBox({ type, message }) {
+  if (!message) return null;
+  const isError = type === "error";
+  return (
+    <View style={[s.alertBox, isError ? s.alertError : s.alertSuccess]}>
+      <Text style={s.alertIcon}>{isError ? "⚠" : "✓"}</Text>
+      <Text style={[s.alertText, isError ? s.alertTextError : s.alertTextSuccess]}>
+        {message}
+      </Text>
+    </View>
+  );
+}
+
+function Field({ label, value, onChangeText, keyboardType, secure, autoCapitalize }) {
   return (
     <View style={s.field}>
       <Text style={s.fieldLabel}>{label}</Text>
@@ -34,7 +44,6 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, secure, 
         style={s.input}
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder || ""}
         placeholderTextColor={C.muted}
         keyboardType={keyboardType || "default"}
         secureTextEntry={secure || false}
@@ -61,6 +70,10 @@ export default function RegisterScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole]                       = useState("student");
   const [loading, setLoading]                 = useState(false);
+  const [alert, setAlert]                     = useState({ type: "", message: "" });
+
+  const showAlert  = (type, message) => setAlert({ type, message });
+  const clearAlert = () => setAlert({ type: "", message: "" });
 
   const roles = [
     { key: "student",  label: "Student"  },
@@ -70,19 +83,20 @@ export default function RegisterScreen({ navigation }) {
   ];
 
   const register = async () => {
-    // Validation
+    clearAlert();
+
     if (!username || !email || !password || !phone || !confirmPassword) {
-      Alert.alert("Error", "Please fill all fields.");
+      showAlert("error", "Please fill in all fields.");
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match.");
+      showAlert("error", "Passwords do not match.");
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert("Error", "Password should be at least 6 characters.");
+      showAlert("error", "Password must be at least 6 characters.");
       return;
     }
 
@@ -98,16 +112,13 @@ export default function RegisterScreen({ navigation }) {
       });
 
       if (result.success) {
-        Alert.alert(
-          "Success", 
-          "Account created successfully!",
-          [{ text: "OK", onPress: () => navigation.replace("Login") }]
-        );
+        showAlert("success", "Account created successfully! Redirecting to login...");
+        setTimeout(() => navigation.replace("Login"), 1200);
       } else {
-        Alert.alert("Registration Failed", result.error);
+        showAlert("error", result.error || "Registration failed. Please try again.");
       }
     } catch (error) {
-      Alert.alert("Error", "Something went wrong. Please try again.");
+      showAlert("error", "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -128,6 +139,8 @@ export default function RegisterScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <AlertBox type={alert.type} message={alert.message} />
+
         <View style={s.formCard}>
           <FormSection title="Personal Information" />
 
@@ -135,7 +148,6 @@ export default function RegisterScreen({ navigation }) {
             label="Full Name"
             value={username}
             onChangeText={setUsername}
-            placeholder="e.g. Lerato Mokhosi"
           />
 
           <View style={s.row}>
@@ -144,7 +156,6 @@ export default function RegisterScreen({ navigation }) {
                 label="Email"
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -155,7 +166,6 @@ export default function RegisterScreen({ navigation }) {
                 label="Phone"
                 value={phone}
                 onChangeText={setPhone}
-                placeholder="+266 5000 0000"
                 keyboardType="phone-pad"
               />
             </View>
@@ -169,7 +179,6 @@ export default function RegisterScreen({ navigation }) {
                 label="Password"
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Min. 6 characters"
                 secure
               />
             </View>
@@ -179,7 +188,6 @@ export default function RegisterScreen({ navigation }) {
                 label="Confirm Password"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                placeholder="Repeat password"
                 secure
               />
             </View>
@@ -259,6 +267,39 @@ const s = StyleSheet.create({
   },
 
   body: { padding: 16, paddingBottom: 48 },
+
+  alertBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    gap: 10,
+  },
+  alertError: {
+    backgroundColor: "#fdf2f2",
+    borderColor: "#f5c6c6",
+  },
+  alertSuccess: {
+    backgroundColor: "#f0faf4",
+    borderColor: "#b7e4c7",
+  },
+  alertIcon: {
+    fontSize: 15,
+  },
+  alertText: {
+    fontSize: 13,
+    fontWeight: "500",
+    flexShrink: 1,
+  },
+  alertTextError: {
+    color: "#c0392b",
+  },
+  alertTextSuccess: {
+    color: "#1a7a42",
+  },
 
   formCard: {
     backgroundColor: C.card,

@@ -1,12 +1,18 @@
 const { db } = require('../config/firebase');
 
-// Get student's own attendance records
+// Get student's own attendance records (FILTERED BY STUDENT ID)
 const getStudentAttendance = async (req, res) => {
   try {
-    const snapshot = await db.collection('attendance')
-      .orderBy('date', 'desc')
-      .get();
+    // Get student ID from request header or query
+    const studentId = req.headers['x-user-id'] || req.query.studentId;
     
+    let query = db.collection('attendance');
+    
+    if (studentId) {
+      query = query.where('studentId', '==', studentId);
+    }
+    
+    const snapshot = await query.orderBy('date', 'desc').get();
     const attendance = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -18,12 +24,11 @@ const getStudentAttendance = async (req, res) => {
   }
 };
 
-// Get students for a course (for lecturer)
+// Get students for a course (for lecturer) - NO CHANGE
 const getCourseStudents = async (req, res) => {
   try {
     const { courseId } = req.params;
     
-    // Get all students from users collection
     const snapshot = await db.collection('users')
       .where('role', '==', 'student')
       .get();
@@ -40,7 +45,7 @@ const getCourseStudents = async (req, res) => {
   }
 };
 
-// Mark attendance (lecturer)
+// Mark attendance (lecturer) - NO CHANGE
 const markAttendance = async (req, res) => {
   try {
     const { attendance, courseId } = req.body;

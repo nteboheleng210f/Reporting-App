@@ -2,349 +2,308 @@ import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
+  TouchableOpacity,
   ScrollView,
+  SafeAreaView,
   StatusBar,
   ActivityIndicator,
-  Alert,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import api from "../../services/api";
+import { signOut } from "firebase/auth";
+import { auth, db } from "../../firebase/config";
+import { collection, getDocs } from "firebase/firestore";
+
+const C = {
+  navy:   "#0f1f3d",
+  gold:   "#c9a84c",
+  white:  "#ffffff",
+  bg:     "#f5f7fb",
+  card:   "#ffffff",
+  border: "#e4e8f0",
+  text:   "#102040",
+  muted:  "#6c7a96",
+};
+
+function NavCard({ title, subtitle, route, navigation }) {
+  return (
+    <TouchableOpacity
+      style={s.navCard}
+      onPress={() => navigation.navigate(route)}
+      activeOpacity={0.75}
+    >
+      <View style={s.navCardBody}>
+        <Text style={s.navCardTitle}>{title}</Text>
+        <Text style={s.navCardSub}>{subtitle}</Text>
+      </View>
+      <Text style={s.navArrow}>›</Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function PRLDashboard({ navigation }) {
-  const [loading, setLoading] = useState(false);
+  const user = auth.currentUser;
+
+  const [statsLoading, setStatsLoading] = useState(true);
   const [stats, setStats] = useState({
     courses: 0,
     lecturers: 0,
     pendingReports: 0,
     reviewedReports: 0,
   });
-  const [statsLoading, setStatsLoading] = useState(true);
-
-  const fetchStats = async () => {
-    try {
-      // Try to get real stats from API
-      const response = await api.get("/prl/stats");
-      if (response.data.success) {
-        setStats(response.data.stats);
-      }
-    } catch (error) {
-      console.log("PRL stats endpoint not available, loading local data");
-      await loadLocalStats();
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  const loadLocalStats = async () => {
-    try {
-      // Get courses count
-      const coursesRes = await api.get("/courses");
-      const coursesCount = coursesRes.data.success ? coursesRes.data.courses.length : 0;
-      
-      // Get unique lecturers from courses
-      const lecturers = new Set();
-      if (coursesRes.data.success) {
-        coursesRes.data.courses.forEach(course => {
-          if (course.lecturerId) lecturers.add(course.lecturerId);
-        });
-      }
-      
-      // Get reports
-      const reportsRes = await api.get("/reports");
-      const reports = reportsRes.data.success ? reportsRes.data.reports : [];
-      const pending = reports.filter(r => r.status === "pending").length;
-      const reviewed = reports.filter(r => r.status === "reviewed").length;
-      
-      setStats({
-        courses: coursesCount,
-        lecturers: lecturers.size,
-        pendingReports: pending,
-        reviewedReports: reviewed,
-      });
-    } catch (error) {
-      console.log("Failed to load local stats");
-    }
-  };
 
   useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [coursesSnap, reportsSnap, usersSnap] = await Promise.all([
+          getDocs(collection(db, "courses")),
+          getDocs(collection(db, "lectureReports")),
+          getDocs(collection(db, "users")),
+        ]);
+
+        const lecturersCount = usersSnap.docs
+          .map((d) => d.data())
+          .filter((u) => u.role === "lecturer").length;
+
+        const reports = reportsSnap.docs.map((d) => d.data());
+        const pending  = reports.filter((r) => r.status === "pending").length;
+        const reviewed = reports.filter((r) => r.status === "reviewed").length;
+
+        setStats({
+          courses:        coursesSnap.size,
+          lecturers:      lecturersCount,
+          pendingReports: pending,
+          reviewedReports: reviewed,
+        });
+      } catch (e) {
+        console.log(e.message);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
     fetchStats();
   }, []);
 
   const logout = async () => {
-    setLoading(true);
-    try {
-      await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
-      navigation.replace("Login");
-    } catch (error) {
-      Alert.alert("Error", error.message);
-    } finally {
-      setLoading(false);
-    }
+    await signOut(auth);
+    navigation.replace("Login");
   };
-
-  const NavCard = ({ title, subtitle, route, accent, isLogout }) => (
-    <TouchableOpacity
-      style={[styles.card, { borderLeftColor: accent }, isLogout && styles.logoutCard]}
-      onPress={isLogout ? logout : () => navigation.navigate(route)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.cardBody}>
-        <Text style={[styles.cardTitle, isLogout && styles.logoutTitle]}>{title}</Text>
-        {subtitle ? (
-          <Text style={styles.cardText}>{subtitle}</Text>
-        ) : null}
-      </View>
-      <Text style={[styles.arrow, isLogout && styles.logoutArrow]}>›</Text>
-    </TouchableOpacity>
-  );
 
   if (statsLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#16a34a" />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={C.navy} />
+        <Text style={s.loadingText}>Loading dashboard...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={s.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>PRL</Text>
-          </View>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Principal Lecturer</Text>
-            <Text style={styles.subtitle}>Supervisor Dashboard</Text>
-          </View>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Supervisor</Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+
+        <View style={s.header}>
+          <Text style={s.eyebrow}>Principal Lecturer</Text>
+          <Text style={s.headerTitle}>{user?.displayName || "Dashboard"}</Text>
+          <Text style={s.headerSub}>Supervisor Dashboard</Text>
+
+          <View style={s.statStrip}>
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{stats.courses}</Text>
+              <Text style={s.statMeta}>Courses</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{stats.lecturers}</Text>
+              <Text style={s.statMeta}>Lecturers</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{stats.pendingReports}</Text>
+              <Text style={s.statMeta}>Pending</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{stats.reviewedReports}</Text>
+              <Text style={s.statMeta}>Reviewed</Text>
+            </View>
           </View>
         </View>
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{stats.courses}</Text>
-            <Text style={styles.statLabel}>Courses</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{stats.lecturers}</Text>
-            <Text style={styles.statLabel}>Lecturers</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#fbbf24" }]}>{stats.pendingReports}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#4ade80" }]}>{stats.reviewedReports}</Text>
-            <Text style={styles.statLabel}>Reviewed</Text>
-          </View>
+        <View style={s.body}>
+          <Text style={s.sectionLabel}>Management</Text>
+
+          <NavCard
+            title="Reports"
+            subtitle="View lecturer reports and add feedback"
+            route="PRLReports"
+            navigation={navigation}
+          />
+          <NavCard
+            title="Courses"
+            subtitle="View courses and assigned lecturers"
+            route="Courses"
+            navigation={navigation}
+          />
+          <NavCard
+            title="Ratings"
+            subtitle="View student ratings"
+            route="Ratings"
+            navigation={navigation}
+          />
+          <NavCard
+            title="Monitoring"
+            subtitle="Track lecturer performance"
+            route="Monitoring"
+            navigation={navigation}
+          />
+
+          <TouchableOpacity
+            style={s.logoutBtn}
+            onPress={logout}
+            activeOpacity={0.8}
+          >
+            <Text style={s.logoutText}>Sign Out</Text>
+            <Text style={s.logoutArrow}>›</Text>
+          </TouchableOpacity>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>MODULES</Text>
-
-        <NavCard
-          title="Reports"
-          subtitle="View lecturer reports & add feedback"
-          route="PRLReports"
-          accent="#16a34a"
-        />
-        <NavCard
-          title="Courses"
-          subtitle="View courses & lecturers"
-          route="Courses"
-          accent="#2563eb"
-        />
-        <NavCard
-          title="Ratings"
-          subtitle="View student ratings"
-          route="Ratings"
-          accent="#d97706"
-        />
-        <NavCard
-          title="Monitoring"
-          subtitle="Track lecturer performance"
-          route="Monitoring"
-          accent="#475569"
-        />
-      </View>
-
-      <View style={styles.section}>
-        <NavCard
-          title="Logout"
-          accent="#dc2626"
-          isLogout
-        />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#070b18",
-  },
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.bg },
+
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#070b18",
+    backgroundColor: C.bg,
   },
   loadingText: {
-    color: "#64748b",
+    color: C.muted,
     fontSize: 14,
     marginTop: 10,
   },
+
   header: {
-    backgroundColor: "#0f172a",
-    padding: 20,
-    paddingTop: 54,
-    paddingBottom: 22,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
-    marginBottom: 8,
+    backgroundColor: C.navy,
+    paddingTop: 52,
+    paddingHorizontal: 24,
+    paddingBottom: 0,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#14532d",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    color: "#86efac",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  headerText: {
-    flex: 1,
-  },
-  title: {
-    color: "#f1f5f9",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  badge: {
-    backgroundColor: "#052e16",
-    borderWidth: 1,
-    borderColor: "#166534",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  badgeText: {
-    color: "#4ade80",
+  eyebrow: {
     fontSize: 11,
     fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
-  statsRow: {
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: C.white,
+    marginBottom: 4,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
+    marginBottom: 28,
+  },
+
+  statStrip: {
     flexDirection: "row",
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+    paddingVertical: 16,
   },
   statItem: {
     flex: 1,
     alignItems: "center",
   },
-  statNumber: {
-    fontSize: 20,
+  statNum: {
+    fontSize: 22,
     fontWeight: "700",
-    color: "#ffffff",
+    color: C.white,
     marginBottom: 2,
   },
-  statLabel: {
-    fontSize: 10,
-    color: "#94a3b8",
+  statMeta: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.4)",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   statDivider: {
     width: 1,
-    backgroundColor: "#334155",
+    backgroundColor: "rgba(255,255,255,0.1)",
     marginVertical: 4,
   },
-  section: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
+
+  body: {
+    padding: 16,
+    paddingBottom: 48,
   },
+
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#475569",
-    letterSpacing: 0.9,
+    letterSpacing: 1,
+    color: C.muted,
+    textTransform: "uppercase",
     marginBottom: 10,
+    marginTop: 4,
   },
-  card: {
-    backgroundColor: "#0f172a",
-    borderWidth: 0.5,
-    borderColor: "#1e293b",
-    borderLeftWidth: 3,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+
+  navCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 8,
     flexDirection: "row",
     alignItems: "center",
   },
-  cardBody: {
-    flex: 1,
-  },
-  cardTitle: {
-    color: "#f1f5f9",
+  navCardBody: { flex: 1 },
+  navCardTitle: {
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 3,
   },
-  cardText: {
-    color: "#64748b",
+  navCardSub: {
     fontSize: 12,
-    marginTop: 3,
+    color: C.muted,
   },
-  arrow: {
-    color: "#334155",
+  navArrow: {
     fontSize: 22,
-    fontWeight: "300",
+    color: C.muted,
     marginLeft: 8,
   },
-  logoutCard: {
-    backgroundColor: "#1c0a0a",
-    borderColor: "#7f1d1d",
-    marginBottom: 36,
-    marginTop: 4,
+
+  logoutBtn: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  logoutTitle: {
-    color: "#fca5a5",
+  logoutText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#dc2626",
   },
   logoutArrow: {
-    color: "#7f1d1d",
+    fontSize: 22,
+    color: "#dc2626",
   },
 });

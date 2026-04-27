@@ -1,5 +1,6 @@
 const { db } = require('../config/firebase');
 
+// Submit rating (student)
 const submitRating = async (req, res) => {
   try {
     const {
@@ -13,13 +14,16 @@ const submitRating = async (req, res) => {
       comment
     } = req.body;
 
+    // Get student ID from header
+    const studentId = req.headers['x-user-id'] || req.body.studentId;
+
     if (!lecturerId || !rating || rating < 1 || rating > 5) {
       return res.status(400).json({ success: false, error: 'Lecturer ID and valid rating (1-5) required' });
     }
 
     const ratingData = {
-      studentId: "test_student",
-      studentName: "Test Student",
+      studentId: studentId || "unknown",
+      studentName: req.body.studentName || "Student",
       lecturerId,
       lecturerName: lecturerName || '',
       courseName: courseName || '',
@@ -43,6 +47,7 @@ const submitRating = async (req, res) => {
   }
 };
 
+// Get ALL ratings (for PRL/PL) - NO FILTER
 const getAllRatings = async (req, res) => {
   try {
     const snapshot = await db.collection('ratings').orderBy('createdAt', 'desc').get();
@@ -53,6 +58,27 @@ const getAllRatings = async (req, res) => {
   }
 };
 
+// Get student's OWN ratings (FILTERED)
+const getMyRatings = async (req, res) => {
+  try {
+    const studentId = req.headers['x-user-id'] || req.query.studentId;
+    
+    let query = db.collection('ratings');
+    
+    if (studentId) {
+      query = query.where('studentId', '==', studentId);
+    }
+    
+    const snapshot = await query.orderBy('createdAt', 'desc').get();
+    const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    res.json({ success: true, ratings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Get courses for student
 const getStudentCourses = async (req, res) => {
   try {
     const snapshot = await db.collection('courses').get();
@@ -63,6 +89,7 @@ const getStudentCourses = async (req, res) => {
   }
 };
 
+// Get ratings for a specific lecturer
 const getLecturerRatings = async (req, res) => {
   try {
     const { lecturerId } = req.params;
@@ -78,4 +105,11 @@ const hasRated = async (req, res) => {
   res.json({ success: true, hasRated: false });
 };
 
-module.exports = { submitRating, getAllRatings, getStudentCourses, getLecturerRatings, hasRated };
+module.exports = { 
+  submitRating, 
+  getAllRatings, 
+  getMyRatings,  
+  getStudentCourses, 
+  getLecturerRatings, 
+  hasRated 
+};

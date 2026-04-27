@@ -1,8 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Use your computer's IP address
-const API_BASE_URL = 'http://10.115.113.31:3000/api';
+// Use deployed backend on Render
+const API_BASE_URL = 'https://reporting-app-nj9a.onrender.com/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
