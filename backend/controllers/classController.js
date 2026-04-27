@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
 
-// Get all classes (no role filtering for testing)
+// Get all classes (for PL/PRL only - NOT for students)
 const getClasses = async (req, res) => {
   try {
     const snapshot = await db.collection('classSchedules').get();
@@ -11,7 +11,7 @@ const getClasses = async (req, res) => {
   }
 };
 
-// Create new class
+// Create new class (PL only)
 const createClass = async (req, res) => {
   try {
     const { className, facultyName, venue, day, time } = req.body;
@@ -27,7 +27,7 @@ const createClass = async (req, res) => {
       day,
       time,
       createdAt: new Date().toISOString(),
-      createdBy: "test_user" // No req.user
+      createdBy: "admin"
     };
 
     const docRef = await db.collection('classSchedules').add(classData);
@@ -42,7 +42,7 @@ const createClass = async (req, res) => {
   }
 };
 
-// Get students for a class
+// Get students for a class (for PL)
 const getClassStudents = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -58,7 +58,7 @@ const getClassStudents = async (req, res) => {
   }
 };
 
-// Assign student to class
+// Assign student to class (PL only)
 const assignStudent = async (req, res) => {
   try {
     const { studentId, classId } = req.body;
@@ -78,8 +78,7 @@ const assignStudent = async (req, res) => {
   }
 };
 
-// Get single class by ID
-// Get single class by ID - ONLY if student is assigned to it
+// Get single class by ID - WITH ACCESS CONTROL
 const getClassById = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -89,9 +88,9 @@ const getClassById = async (req, res) => {
     const userDoc = await db.collection('users').doc(studentId).get();
     const studentClassId = userDoc.data()?.classId;
     
-    // If student has no class or class doesn't match, deny access
+    // IMPORTANT: Student can ONLY see their own class
     if (!studentClassId || studentClassId !== classId) {
-      return res.status(403).json({ success: false, error: 'Access denied - not your class' });
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
     
     const docSnap = await db.collection('classSchedules').doc(classId).get();

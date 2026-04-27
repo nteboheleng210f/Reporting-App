@@ -14,8 +14,7 @@ const submitRating = async (req, res) => {
       comment
     } = req.body;
 
-    // Get student ID from header
-    const studentId = req.headers['x-user-id'] || req.body.studentId;
+    const studentId = req.headers['x-user-id'];
 
     if (!lecturerId || !rating || rating < 1 || rating > 5) {
       return res.status(400).json({ success: false, error: 'Lecturer ID and valid rating (1-5) required' });
@@ -47,7 +46,7 @@ const submitRating = async (req, res) => {
   }
 };
 
-// Get ALL ratings (for PRL/PL) - NO FILTER
+// Get ALL ratings (for PRL/PL only)
 const getAllRatings = async (req, res) => {
   try {
     const snapshot = await db.collection('ratings').orderBy('createdAt', 'desc').get();
@@ -58,22 +57,31 @@ const getAllRatings = async (req, res) => {
   }
 };
 
-// Get student's OWN ratings (FILTERED)
+// Get student's OWN ratings - FILTERED
 const getMyRatings = async (req, res) => {
   try {
-    const studentId = req.headers['x-user-id'] || req.query.studentId;
+    const studentId = req.headers['x-user-id'];
     
-    let query = db.collection('ratings');
+    console.log("=== getMyRatings ===");
+    console.log("Student ID from header:", studentId);
     
-    if (studentId) {
-      query = query.where('studentId', '==', studentId);
+    if (!studentId) {
+      return res.json({ success: true, ratings: [] });
     }
     
-    const snapshot = await query.orderBy('createdAt', 'desc').get();
+    // ONLY get ratings for this specific student
+    const snapshot = await db.collection('ratings')
+      .where('studentId', '==', studentId)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    console.log(`Found ${ratings.length} ratings for student ${studentId}`);
     
     res.json({ success: true, ratings });
   } catch (error) {
+    console.error("Ratings error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
