@@ -2,23 +2,55 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  Alert,
+  StyleSheet,
   ActivityIndicator,
+  ScrollView,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../services/api";
 
+const C = {
+  navy:   "#0f1f3d",
+  navy2:  "#1a2f52",
+  navy3:  "#253d66",
+  gold:   "#c9a84c",
+  white:  "#ffffff",
+  bg:     "#f5f7fb",
+  card:   "#ffffff",
+  border: "#e4e8f0",
+  text:   "#102040",
+  muted:  "#6c7a96",
+  badge:  "#edf0f7",
+  empty:  "#f0f4ff",
+};
+
+function NavCard({ title, subtitle, route, navigation }) {
+  return (
+    <TouchableOpacity
+      style={s.navCard}
+      onPress={() => navigation.navigate(route)}
+      activeOpacity={0.75}
+    >
+      <View style={s.navCardBody}>
+        <Text style={s.navCardTitle}>{title}</Text>
+        <Text style={s.navCardSub}>{subtitle}</Text>
+      </View>
+      <Text style={s.navArrow}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function LecturerDashboard({ navigation }) {
-  const [stats, setStats] = useState({ courses: 0, classes: 0, reports: 0 });
+  const [stats, setStats]           = useState({ courses: 0, classes: 0, reports: 0 });
   const [lecturerName, setLecturerName] = useState("");
   const [isAssigned, setIsAssigned] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]       = useState(true);
 
-  // ─── Load lecturer name from local storage ───────────────────────────────────
+ 
   const getLecturerInfo = async () => {
     const userData = await AsyncStorage.getItem("user_data");
     if (userData) {
@@ -27,17 +59,15 @@ export default function LecturerDashboard({ navigation }) {
     }
   };
 
-  // ─── Fetch stats — filtered to THIS lecturer only ────────────────────────────
+  
   const loadData = async () => {
     try {
       const response = await api.get("/dashboard/lecturer");
       if (response.data.success) {
         setStats(response.data.stats);
-        // Backend now returns isAssigned flag
         setIsAssigned(response.data.user?.isAssigned ?? response.data.stats.courses > 0);
       }
     } catch (error) {
-      // Fallback: pull directly from courses/reports endpoints, still filtered by lecturerId
       console.log("Falling back to local stats");
       await loadLocalStats();
     } finally {
@@ -45,17 +75,13 @@ export default function LecturerDashboard({ navigation }) {
     }
   };
 
-  // ─── Fallback stats loader — uses same filtered endpoints ────────────────────
+  
   const loadLocalStats = async () => {
     try {
-      // /courses returns only this lecturer's courses (filtered server-side by lecturerId)
       const coursesRes = await api.get("/courses/mine");
       const coursesCount = coursesRes.data.success ? coursesRes.data.courses.length : 0;
-
-      // /reports returns only this lecturer's reports (filtered server-side by lecturerId)
       const reportsRes = await api.get("/reports/mine");
       const reportsCount = reportsRes.data.success ? reportsRes.data.reports.length : 0;
-
       setStats({ courses: coursesCount, classes: coursesCount, reports: reportsCount });
       setIsAssigned(coursesCount > 0);
     } catch (error) {
@@ -74,317 +100,255 @@ export default function LecturerDashboard({ navigation }) {
     }, [])
   );
 
-  // ─── Logout ──────────────────────────────────────────────────────────────────
   const logout = async () => {
     await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
     navigation.replace("Login");
   };
 
-  // ─── Sub-components ──────────────────────────────────────────────────────────
-  const NavCard = ({ title, subtitle, route, accent }) => (
-    <TouchableOpacity
-      style={[styles.navCard, { borderLeftColor: accent, borderLeftWidth: 3 }]}
-      onPress={() => navigation.navigate(route)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.navCardInner}>
-        <Text style={styles.navCardTitle}>{title}</Text>
-        <Text style={styles.navCardSub}>{subtitle}</Text>
-      </View>
-      <Text style={styles.navArrow}>›</Text>
-    </TouchableOpacity>
-  );
-
-  const StatBox = ({ value, label, bg }) => (
-    <View style={[styles.statBox, { backgroundColor: bg }]}>
-      <Text style={styles.statNum}>{isAssigned ? value : "—"}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-
-  // ─── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2563eb" />
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={C.navy} />
+        <Text style={s.loadingText}>Loading dashboard...</Text>
       </View>
     );
   }
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={s.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {lecturerName ? lecturerName[0].toUpperCase() : "L"}
-            </Text>
-          </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.portalTitle}>{lecturerName || "Lecturer"}</Text>
-            <Text style={styles.portalSub}>Lecturer Portal</Text>
-          </View>
+        
+        <View style={s.header}>
+          <Text style={s.eyebrow}>Lecturer</Text>
+          <Text style={s.headerTitle}>{lecturerName || "Dashboard"}</Text>
+          <Text style={s.headerSub}>
+            {isAssigned ? "Teaching Dashboard" : "Academic Portal"}
+          </Text>
 
-          {/* ✅ Badge reflects actual assignment status */}
-          <View style={[styles.statusBadge, isAssigned ? styles.badgeActive : styles.badgePending]}>
-            <Text style={[styles.statusBadgeText, isAssigned ? styles.badgeActiveText : styles.badgePendingText]}>
-              {isAssigned ? "Active" : "Pending"}
-            </Text>
+          <View style={s.statStrip}>
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{isAssigned ? stats.courses : "—"}</Text>
+              <Text style={s.statMeta}>Courses</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{isAssigned ? stats.classes : "—"}</Text>
+              <Text style={s.statMeta}>Classes</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statNum}>{isAssigned ? stats.reports : "—"}</Text>
+              <Text style={s.statMeta}>Reports</Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.divider} />
+        <View style={s.body}>
 
-        {/* ── Stats row ── */}
-        <View style={styles.statsRow}>
-          <StatBox value={stats.courses} label="My Courses" bg="#E6F1FB" />
-          <StatBox value={stats.classes} label="Classes"    bg="#EEEDFE" />
-          <StatBox value={stats.reports} label="Reports"    bg="#E1F5EE" />
+          
+          {!isAssigned && (
+            <View style={s.pendingCard}>
+             
+              <View style={{ flex: 1 }}>
+                <Text style={s.pendingTitle}>Not Assigned Yet</Text>
+                
+              </View>
+            </View>
+          )}
+
+         
+          <Text style={s.sectionLabel}>Teaching</Text>
+
+          <NavCard
+            title="Reports"
+            subtitle="Submit lecture reports"
+            route="LectureReportForm"
+            navigation={navigation}
+          />
+          <NavCard
+            title="My Classes"
+            subtitle="View assigned classes only"
+            route="Classes"
+            navigation={navigation}
+          />
+          <NavCard
+            title="Attendance"
+            subtitle="Mark student attendance"
+            route="Attendance"
+            navigation={navigation}
+          />
+          <NavCard
+            title="Ratings"
+            subtitle="Student feedback"
+            route="Ratings"
+            navigation={navigation}
+          />
+          <NavCard
+            title="Monitoring"
+            subtitle="Performance overview"
+            route="Monitoring"
+            navigation={navigation}
+          />
+
+         
+          <TouchableOpacity
+            style={s.logoutBtn}
+            onPress={logout}
+            activeOpacity={0.8}
+          >
+            <Text style={s.logoutText}>  Sign Out</Text>
+            <Text style={s.logoutArrow}>›</Text>
+          </TouchableOpacity>
+
         </View>
-
-        {/* ✅ Pending notice shown when not yet assigned */}
-        {!isAssigned && (
-          <View style={styles.pendingNotice}>
-            <Text style={styles.pendingIcon}>⏳</Text>
-            <Text style={styles.pendingText}>
-              You haven't been assigned to any courses yet. Your program leader will assign you soon.
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* ── Navigation ── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>NAVIGATION</Text>
-
-        <NavCard
-          title="Reports"
-          subtitle="Submit lecture reports"
-          route="LectureReportForm"
-          accent="#2563eb"
-        />
-        <NavCard
-          title="My Classes"
-          subtitle="View assigned classes only"
-          route="Classes"
-          accent="#7c3aed"
-        />
-        <NavCard
-          title="Attendance"
-          subtitle="Mark student attendance"
-          route="Attendance"
-          accent="#16a34a"
-        />
-        <NavCard
-          title="Ratings"
-          subtitle="Student feedback"
-          route="Ratings"
-          accent="#d97706"
-        />
-        <NavCard
-          title="Monitoring"
-          subtitle="Performance overview"
-          route="Monitoring"
-          accent="#475569"
-        />
-      </View>
-
-      {/* ── Sign out ── */}
-      <View style={styles.section}>
-        <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
-
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0f172a",
-  },
-  loadingContainer: {
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.bg },
+
+  center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: C.bg,
   },
+  loadingText: { color: C.muted, fontSize: 14, marginTop: 10 },
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+  
   header: {
-    backgroundColor: "#111827",
-    padding: 20,
-    paddingTop: 54,
-    paddingBottom: 22,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    marginBottom: 8,
+    backgroundColor: C.navy,
+    paddingTop: 52,
+    paddingHorizontal: 24,
+    paddingBottom: 0,
   },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 18,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#1e3a5f",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    color: "#93c5fd",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  portalTitle: {
-    color: "#f1f5f9",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  portalSub: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 2,
-  },
-
-  // ── Status badges ────────────────────────────────────────────────────────────
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  statusBadgeText: {
+  eyebrow: {
     fontSize: 11,
     fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
-  badgeActive: {
-    backgroundColor: "#14532d",
-    borderColor: "#166534",
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: C.white,
+    marginBottom: 4,
   },
-  badgeActiveText: {
-    color: "#86efac",
-  },
-  badgePending: {
-    backgroundColor: "#1c1a07",
-    borderColor: "#713f12",
-  },
-  badgePendingText: {
-    color: "#fde68a",
+  headerSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
+    marginBottom: 28,
   },
 
-  // ── Pending notice ───────────────────────────────────────────────────────────
-  pendingNotice: {
+  
+  statStrip: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#1c1917",
-    borderWidth: 1,
-    borderColor: "#292524",
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 14,
-    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+    paddingVertical: 16,
   },
-  pendingIcon: {
-    fontSize: 16,
-  },
-  pendingText: {
-    flex: 1,
-    color: "#a8a29e",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: "#1e293b",
-    marginBottom: 16,
-  },
-
-  // ── Stats ────────────────────────────────────────────────────────────────────
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  statBox: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    alignItems: "center",
-  },
+  statItem: { flex: 1, alignItems: "center" },
   statNum: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#0f172a",
+    color: C.white,
+    marginBottom: 2,
   },
-  statLabel: {
+  statMeta: {
     fontSize: 11,
-    color: "#334155",
-    marginTop: 3,
+    color: "rgba(255,255,255,0.4)",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginVertical: 4,
+  },
+  body: { padding: 16, paddingBottom: 48 },
+
+  
+  pendingCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: C.empty,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  pendingIcon: { fontSize: 24 },
+  pendingTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 4,
+  },
+  pendingText: {
+    fontSize: 12,
+    color: C.muted,
+    lineHeight: 18,
   },
 
-  // ── Section / nav cards ──────────────────────────────────────────────────────
-  section: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#475569",
-    letterSpacing: 0.9,
+    letterSpacing: 1,
+    color: C.muted,
+    textTransform: "uppercase",
     marginBottom: 10,
+    marginTop: 4,
   },
+
+  
   navCard: {
-    backgroundColor: "#1e293b",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    padding: 16,
     marginBottom: 8,
     flexDirection: "row",
     alignItems: "center",
   },
-  navCardInner: { flex: 1 },
+  navCardBody: { flex: 1 },
   navCardTitle: {
-    color: "#f1f5f9",
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: C.text,
+    marginBottom: 3,
   },
-  navCardSub: {
-    color: "#64748b",
-    fontSize: 12,
-    marginTop: 3,
-  },
-  navArrow: {
-    color: "#475569",
-    fontSize: 22,
-  },
+  navCardSub: { fontSize: 12, color: C.muted },
+  navArrow: { fontSize: 22, color: C.muted, marginLeft: 8 },
 
-  // ── Logout ───────────────────────────────────────────────────────────────────
+  
   logoutBtn: {
-    backgroundColor: "#1c0a0a",
-    borderWidth: 1,
-    borderColor: "#7f1d1d",
+    backgroundColor: C.navy,
     borderRadius: 12,
-    paddingVertical: 14,
+    padding: 16,
     alignItems: "center",
-    marginBottom: 32,
     marginTop: 4,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   logoutText: {
-    color: "#fca5a5",
+    color: C.white,
+    fontWeight: "700",
     fontSize: 14,
-    fontWeight: "600",
+    letterSpacing: 0.4,
+  },
+  logoutArrow: {
+    fontSize: 22,
+    color: "#f3eeee",
   },
 });
