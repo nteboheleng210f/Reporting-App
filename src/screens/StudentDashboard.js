@@ -47,11 +47,7 @@ function NavCard({ title, subtitle, route, navigation }) {
 function EmptyClassCard() {
   return (
     <View style={s.emptyCard}>
-      <Text style={s.emptyIcon}>📋</Text>
-      <Text style={s.emptyTitle}>Not Assigned Yet</Text>
-      <Text style={s.emptySubtitle}>
-        Your program leader hasn't assigned you to a class yet. Check back soon.
-      </Text>
+      
     </View>
   );
 }
@@ -152,18 +148,18 @@ export default function StudentDashboard({ navigation }) {
 
           <View style={s.statStrip}>
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : ""}</Text>
               <Text style={s.statMeta}>Attendance</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? ratingsCount : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? ratingsCount : ""}</Text>
               <Text style={s.statMeta}>Ratings</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
               <Text style={s.statNum}>
-                {!isAssigned ? "—" : classLoading ? "..." : upcomingClass ? "1" : "0"}
+                {!isAssigned ? "" : classLoading ? "..." : upcomingClass ? "1" : "0"}
               </Text>
               <Text style={s.statMeta}>Upcoming</Text>
             </View>

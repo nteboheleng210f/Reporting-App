@@ -174,7 +174,7 @@ export default function MonitoringScreen() {
         }
         
       } else if (userRole === "prl") {
-        // PRL: load all reports for review
+        //  load all reports for review
         const reportsRes = await api.get("/reports");
         if (reportsRes.data.success) {
           setReports(reportsRes.data.reports);
@@ -212,9 +212,9 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ========== STUDENT VIEW ==========
+
   if (role === "student") {
-    // Match attendance with reports
+    
     const lecturesWithStatus = reports.map((report) => {
       const attDoc = attendance.find(
         (a) => a.courseId === report.courseId || a.courseName === report.courseName
@@ -279,7 +279,6 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ========== LECTURER VIEW ==========
   if (role === "lecturer") {
     // Calculate lecturer's stats
     const totalClasses = myReports.length;
@@ -316,7 +315,6 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ========== PRL VIEW ==========
   if (role === "prl") {
     const pendingReports = reports.filter(r => r.status === "pending").length;
     const reviewedReports = reports.filter(r => r.status === "reviewed").length;
@@ -352,7 +350,7 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ========== PL VIEW ==========
+  
   if (role === "pl") {
     const totalReports = reports.length;
     const pendingReports = reports.filter(r => r.status === "pending").length;
@@ -405,7 +403,6 @@ export default function MonitoringScreen() {
     );
   }
 
-  // Fallback loading
   return (
     <View style={styles.centered}>
       <ActivityIndicator size="large" color={C.navy} />
