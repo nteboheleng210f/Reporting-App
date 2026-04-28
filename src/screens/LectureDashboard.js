@@ -130,17 +130,17 @@ export default function LecturerDashboard({ navigation }) {
 
           <View style={s.statStrip}>
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? stats.courses : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? stats.courses : ""}</Text>
               <Text style={s.statMeta}>Courses</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? stats.classes : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? stats.classes : ""}</Text>
               <Text style={s.statMeta}>Classes</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? stats.reports : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? stats.reports : ""}</Text>
               <Text style={s.statMeta}>Reports</Text>
             </View>
           </View>
@@ -159,8 +159,7 @@ export default function LecturerDashboard({ navigation }) {
             </View>
           )}
 
-         
-          <Text style={s.sectionLabel}>Teaching</Text>
+        
 
           <NavCard
             title="Reports"
