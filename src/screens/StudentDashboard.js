@@ -15,6 +15,8 @@ import api from "../services/api";
 
 const C = {
   navy:   "#0f1f3d",
+  navy2:  "#1a2f52",
+  navy3:  "#253d66",
   gold:   "#c9a84c",
   white:  "#ffffff",
   bg:     "#f5f7fb",
@@ -22,12 +24,17 @@ const C = {
   border: "#e4e8f0",
   text:   "#102040",
   muted:  "#6c7a96",
+  badge:  "#edf0f7",
   empty:  "#f0f4ff",
 };
 
-function NavCard({ title, subtitle, onPress }) {
+function NavCard({ title, subtitle, route, navigation }) {
   return (
-    <TouchableOpacity style={s.navCard} onPress={onPress} activeOpacity={0.75}>
+    <TouchableOpacity
+      style={s.navCard}
+      onPress={() => navigation.navigate(route)}
+      activeOpacity={0.75}
+    >
       <View style={s.navCardBody}>
         <Text style={s.navCardTitle}>{title}</Text>
         <Text style={s.navCardSub}>{subtitle}</Text>
@@ -60,61 +67,34 @@ export default function StudentDashboard({ navigation }) {
   const [studentClass, setStudentClass]           = useState("");
   const [isAssigned, setIsAssigned]               = useState(false);
 
-  // ─── Load student info from local storage ───────────────────────────────────
   const getStudentData = async () => {
     const userData = await AsyncStorage.getItem("user_data");
     if (userData) {
       const user = JSON.parse(userData);
       setStudentName(user.username || user.email || "Student");
-      setStudentClass(user.className || "");
-      setIsAssigned(!!user.classId);
     }
   };
 
-  // ─── Attendance stats (only for this student) ────────────────────────────────
-  const fetchAttendanceStats = async () => {
+  const fetchStats = async () => {
     try {
-      const response = await api.get("/attendance/student");
-      if (response.data.success && response.data.attendance) {
-        const attendance = response.data.attendance;
-        const present = attendance.filter((a) => a.status === "Present").length;
-        const total   = attendance.length;
-        const percent = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
-        setAttendancePercent(percent);
-      }
-    } catch (error) {
-      console.log("Failed to load attendance stats");
-    }
-  };
-
-  // ─── Ratings count (only for this student) ───────────────────────────────────
-  const fetchRatingsCount = async () => {
-    try {
-      const response = await api.get("/ratings/mine");
+      const response = await api.get("/dashboard/student");
       if (response.data.success) {
-        setRatingsCount(response.data.ratings.length);
+        const { stats, user } = response.data;
+        setAttendancePercent(stats.attendancePercent ?? 0);
+        setRatingsCount(stats.ratingsCount ?? 0);
+        setIsAssigned(!!user?.classId);
+        setStudentClass(user?.className || "");
       }
     } catch (error) {
-      console.log("Failed to load ratings count");
+      console.log("Failed to load student stats:", error);
     }
   };
 
-  // ─── Upcoming class — FIXED: no fallback to all classes ─────────────────────
   const fetchUpcomingClass = async () => {
     try {
-      const userData = await AsyncStorage.getItem("user_data");
-      const user = userData ? JSON.parse(userData) : {};
-      const studentClassId = user.classId;
-
-      // If not assigned to any class, show nothing — do NOT fetch all classes
-      if (!studentClassId) {
-        setUpcomingClass(null);
-        return;
-      }
-
-      const response = await api.get(`/classes/${studentClassId}`);
-      if (response.data.success && response.data.class) {
-        setUpcomingClass(response.data.class);
+      const response = await api.get("/dashboard/student/upcoming-class");
+      if (response.data.success) {
+        setUpcomingClass(response.data.upcomingClass || null);
       } else {
         setUpcomingClass(null);
       }
@@ -129,15 +109,13 @@ export default function StudentDashboard({ navigation }) {
   useEffect(() => {
     const loadData = async () => {
       await getStudentData();
-      await fetchAttendanceStats();
-      await fetchRatingsCount();
+      await fetchStats();
       await fetchUpcomingClass();
       setStatsLoading(false);
     };
     loadData();
   }, []);
 
-  // ─── Logout ──────────────────────────────────────────────────────────────────
   const logout = async () => {
     setLoading(true);
     try {
@@ -150,7 +128,6 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  // ─── Loading screen ──────────────────────────────────────────────────────────
   if (statsLoading) {
     return (
       <View style={s.center}>
@@ -160,22 +137,19 @@ export default function StudentDashboard({ navigation }) {
     );
   }
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.screen}>
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* ── Header ── */}
         <View style={s.header}>
           <Text style={s.eyebrow}>Student</Text>
-          <Text style={s.headerTitle}>{studentName}</Text>
+          <Text style={s.headerTitle}>{studentName || "Dashboard"}</Text>
           <Text style={s.headerSub}>
             {studentClass ? `Class: ${studentClass}` : "Academic Portal"}
           </Text>
 
-          {/* ── Stat strip ── */}
           <View style={s.statStrip}>
             <View style={s.statItem}>
               <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : "—"}</Text>
@@ -189,13 +163,7 @@ export default function StudentDashboard({ navigation }) {
             <View style={s.statDivider} />
             <View style={s.statItem}>
               <Text style={s.statNum}>
-                {!isAssigned
-                  ? "—"
-                  : classLoading
-                  ? "..."
-                  : upcomingClass
-                  ? "1"
-                  : "0"}
+                {!isAssigned ? "—" : classLoading ? "..." : upcomingClass ? "1" : "0"}
               </Text>
               <Text style={s.statMeta}>Upcoming</Text>
             </View>
@@ -204,7 +172,6 @@ export default function StudentDashboard({ navigation }) {
 
         <View style={s.body}>
 
-          {/* ── Upcoming class section ── */}
           <Text style={s.sectionLabel}>Next Class</Text>
 
           {classLoading ? (
@@ -222,30 +189,30 @@ export default function StudentDashboard({ navigation }) {
               <Text style={s.classVenue}>{upcomingClass.venue}</Text>
             </View>
           ) : (
-            // ✅ Shown when student has no classId assigned yet
             <EmptyClassCard />
           )}
 
-          {/* ── Academic nav ── */}
           <Text style={s.sectionLabel}>Academic</Text>
 
           <NavCard
             title="View Attendance"
             subtitle="Check your attendance record"
-            onPress={() => navigation.navigate("Attendance")}
+            route="Attendance"
+            navigation={navigation}
           />
           <NavCard
             title="Rate Lecturer"
             subtitle="Submit your lecturer ratings"
-            onPress={() => navigation.navigate("Ratings")}
+            route="Ratings"
+            navigation={navigation}
           />
           <NavCard
             title="My Monitoring"
             subtitle="Track your academic progress"
-            onPress={() => navigation.navigate("Monitoring")}
+            route="Monitoring"
+            navigation={navigation}
           />
 
-          {/* ── Sign out ── */}
           <TouchableOpacity
             style={[s.logoutBtn, loading && { opacity: 0.6 }]}
             onPress={logout}
@@ -273,13 +240,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     backgroundColor: C.bg,
   },
-  loadingText: {
-    color: C.muted,
-    fontSize: 14,
-    marginTop: 10,
-  },
+  loadingText: { color: C.muted, fontSize: 14, marginTop: 10 },
 
-  // ── Header ──────────────────────────────────────────────────────────────────
   header: {
     backgroundColor: C.navy,
     paddingTop: 52,
@@ -306,17 +268,13 @@ const s = StyleSheet.create({
     marginBottom: 28,
   },
 
-  // ── Stat strip ──────────────────────────────────────────────────────────────
   statStrip: {
     flexDirection: "row",
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.1)",
     paddingVertical: 16,
   },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-  },
+  statItem: { flex: 1, alignItems: "center" },
   statNum: {
     fontSize: 22,
     fontWeight: "700",
@@ -335,11 +293,7 @@ const s = StyleSheet.create({
     marginVertical: 4,
   },
 
-  // ── Body ────────────────────────────────────────────────────────────────────
-  body: {
-    padding: 16,
-    paddingBottom: 48,
-  },
+  body: { padding: 16, paddingBottom: 48 },
 
   sectionLabel: {
     fontSize: 11,
@@ -351,7 +305,6 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ── Class card ───────────────────────────────────────────────────────────────
   classCard: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -366,17 +319,9 @@ const s = StyleSheet.create({
     color: C.text,
     marginBottom: 4,
   },
-  classMeta: {
-    fontSize: 12,
-    color: C.muted,
-    marginBottom: 2,
-  },
-  classVenue: {
-    fontSize: 12,
-    color: C.muted,
-  },
+  classMeta: { fontSize: 12, color: C.muted, marginBottom: 2 },
+  classVenue: { fontSize: 12, color: C.muted },
 
-  // ── Empty state card ─────────────────────────────────────────────────────────
   emptyCard: {
     backgroundColor: C.empty,
     borderWidth: 1,
@@ -386,10 +331,7 @@ const s = StyleSheet.create({
     marginBottom: 16,
     alignItems: "center",
   },
-  emptyIcon: {
-    fontSize: 32,
-    marginBottom: 10,
-  },
+  emptyIcon: { fontSize: 32, marginBottom: 10 },
   emptyTitle: {
     fontSize: 15,
     fontWeight: "700",
@@ -404,7 +346,6 @@ const s = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // ── Nav cards ────────────────────────────────────────────────────────────────
   navCard: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -422,35 +363,27 @@ const s = StyleSheet.create({
     color: C.text,
     marginBottom: 3,
   },
-  navCardSub: {
-    fontSize: 12,
-    color: C.muted,
-  },
-  navArrow: {
-    fontSize: 22,
-    color: C.muted,
-    marginLeft: 8,
-  },
+  navCardSub: { fontSize: 12, color: C.muted },
+  navArrow: { fontSize: 22, color: C.muted, marginLeft: 8 },
 
-  // ── Logout button ────────────────────────────────────────────────────────────
   logoutBtn: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: "#fecaca",
+    backgroundColor: C.navy,
     borderRadius: 12,
     padding: 16,
-    marginTop: 16,
+    alignItems: "center",
+    marginTop: 4,
+    marginBottom: 16,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
   },
   logoutText: {
+    color: C.white,
+    fontWeight: "700",
     fontSize: 14,
-    fontWeight: "600",
-    color: "#dc2626",
+    letterSpacing: 0.4,
   },
   logoutArrow: {
     fontSize: 22,
-    color: "#dc2626",
+    color: "#f3eeee",
   },
 });

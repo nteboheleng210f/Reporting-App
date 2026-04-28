@@ -7,17 +7,14 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
-
-import { signOut } from "firebase/auth";
-import { auth, db } from "../../firebase/config";
-import { collection, getDocs } from "firebase/firestore";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../../services/api";
 
 const C = {
   navy:   "#0f1f3d",
-  navy2:  "#1a2f52",
-  navy3:  "#253d66",
   gold:   "#c9a84c",
   white:  "#ffffff",
   bg:     "#f5f7fb",
@@ -25,8 +22,8 @@ const C = {
   border: "#e4e8f0",
   text:   "#102040",
   muted:  "#6c7a96",
-  badge:  "#edf0f7",
 };
+
 function NavCard({ title, subtitle, route, navigation }) {
   return (
     <TouchableOpacity
@@ -43,71 +40,70 @@ function NavCard({ title, subtitle, route, navigation }) {
   );
 }
 
-export default function PLDashboard({ navigation }) {
-  const user = auth.currentUser;
-
+export default function PRLDashboard({ navigation }) {
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [userName, setUserName] = useState("");
   const [stats, setStats] = useState({
     courses: 0,
-    classes: 0,
-    reports: 0,
     lecturers: 0,
+    pendingReports: 0,
+    reviewedReports: 0,
   });
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [coursesSnap, classesSnap, reportsSnap, usersSnap] =
-          await Promise.all([
-            getDocs(collection(db, "courses")),
-            getDocs(collection(db, "classSchedules")),
-            getDocs(collection(db, "lectureReports")),
-            getDocs(collection(db, "users")),
-          ]);
-
-        const lecturersCount = usersSnap.docs
-          .map((d) => d.data())
-          .filter((u) => u.role === "lecturer").length;
-
-        setStats({
-          courses:   coursesSnap.size,
-          classes:   classesSnap.size,
-          reports:   reportsSnap.size,
-          lecturers: lecturersCount,
-        });
-      } catch (e) {
-        console.log(e.message);
+  const fetchStats = async () => {
+    try {
+      const response = await api.get("/prl/stats");
+      if (response.data.success) {
+        setStats(response.data.stats);
       }
-    };
+    } catch (error) {
+      console.log("Error fetching stats:", error);
+      Alert.alert("Error", error.response?.data?.error || "Failed to load stats");
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
+  const getUserName = async () => {
+    const userData = await AsyncStorage.getItem("user_data");
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserName(user.username || user.email || "PRL");
+    }
+  };
+
+  useEffect(() => {
+    getUserName();
     fetchStats();
   }, []);
 
   const logout = async () => {
-    await signOut(auth);
-    navigation.replace("Login");
+    try {
+      await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
+      navigation.replace("Login");
+    } catch (error) {
+      Alert.alert("Error", error.message);
+    }
   };
 
-
-  const initials = (user?.displayName || "PL")
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  if (statsLoading) {
+    return (
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={C.navy} />
+        <Text style={s.loadingText}>Loading dashboard...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={s.screen}>
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-
-       
         <View style={s.header}>
-          <Text style={s.eyebrow}>Programme Leader</Text>
-          <Text style={s.headerTitle}>
-            {user?.displayName || "Dashboard"}
-          </Text>
-          <Text style={s.headerSub}>Academic Control Centre</Text>
+          <Text style={s.eyebrow}>Principal Lecturer</Text>
+          <Text style={s.headerTitle}>{userName}</Text>
+          <Text style={s.headerSub}>Supervisor Dashboard</Text>
 
           <View style={s.statStrip}>
             <View style={s.statItem}>
@@ -116,58 +112,50 @@ export default function PLDashboard({ navigation }) {
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{stats.classes}</Text>
-              <Text style={s.statMeta}>Classes</Text>
-            </View>
-            <View style={s.statDivider} />
-            <View style={s.statItem}>
               <Text style={s.statNum}>{stats.lecturers}</Text>
               <Text style={s.statMeta}>Lecturers</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{stats.reports}</Text>
-              <Text style={s.statMeta}>Reports</Text>
+              <Text style={[s.statNum, { color: "#fbbf24" }]}>{stats.pendingReports}</Text>
+              <Text style={s.statMeta}>Pending</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={[s.statNum, { color: "#4ade80" }]}>{stats.reviewedReports}</Text>
+              <Text style={s.statMeta}>Reviewed</Text>
             </View>
           </View>
         </View>
 
         <View style={s.body}>
+          <Text style={s.sectionLabel}>Management</Text>
 
-          <Text style={s.sectionLabel}>Management Courses</Text>
-
-          <NavCard
-            title="Courses"
-            subtitle="Assign lecturers and classes"
-            route="Courses"
-            navigation={navigation}
-          />
-          <NavCard
-            title="Classes"
-            subtitle="Manage class structure"
-            route="Classes"
-            navigation={navigation}
-          />
           <NavCard
             title="Reports"
-            subtitle="Review academic feedback"
+            subtitle="View lecturer reports and add feedback"
             route="PRLReports"
             navigation={navigation}
           />
           <NavCard
-            title="Monitoring"
-            subtitle="System-wide tracking"
-            route="Monitoring"
+            title="Courses"
+            subtitle="View courses and assigned lecturers"
+            route="Courses"
             navigation={navigation}
           />
           <NavCard
             title="Ratings"
-            subtitle="Student lecturer feedback"
+            subtitle="View student ratings"
             route="Ratings"
             navigation={navigation}
           />
+          <NavCard
+            title="Monitoring"
+            subtitle="Track lecturer performance"
+            route="Monitoring"
+            navigation={navigation}
+          />
 
-          
           <TouchableOpacity
             style={s.logoutBtn}
             onPress={logout}
@@ -176,16 +164,26 @@ export default function PLDashboard({ navigation }) {
             <Text style={s.logoutText}>Sign Out</Text>
             <Text style={s.logoutArrow}>›</Text>
           </TouchableOpacity>
-
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
+
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: C.bg,
+  },
+  loadingText: {
+    color: C.muted,
+    fontSize: 14,
+    marginTop: 10,
+  },
 
   header: {
     backgroundColor: C.navy,
@@ -241,12 +239,10 @@ const s = StyleSheet.create({
     marginVertical: 4,
   },
 
- 
   body: {
     padding: 16,
     paddingBottom: 48,
   },
-
 
   sectionLabel: {
     fontSize: 11,
@@ -258,7 +254,6 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
 
-  
   navCard: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -285,7 +280,6 @@ const s = StyleSheet.create({
     color: C.muted,
     marginLeft: 8,
   },
-
 
   logoutBtn: {
     backgroundColor: C.card,

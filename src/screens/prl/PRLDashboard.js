@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../services/api";
 
 const C = {
@@ -161,7 +160,7 @@ export default function PRLDashboard({ navigation }) {
             onPress={logout}
             activeOpacity={0.8}
           >
-            <Text style={s.logoutText}>Sign Out</Text>
+            <Text style={s.logoutText}>LogOut</Text>
             <Text style={s.logoutArrow}>›</Text>
           </TouchableOpacity>
         </View>
@@ -282,23 +281,23 @@ const s = StyleSheet.create({
   },
 
   logoutBtn: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: "#fecaca",
+    backgroundColor: C.navy,
     borderRadius: 12,
     padding: 16,
-    marginTop: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 4,
+    marginBottom: 16,
   },
   logoutText: {
+   color: C.white,
+    fontWeight: "700",
     fontSize: 14,
-    fontWeight: "600",
-    color: "#dc2626",
+    letterSpacing: 0.4,
+
+
   },
   logoutArrow: {
     fontSize: 22,
-    color: "#dc2626",
+    color: "#f5f2f2",
   },
 });
