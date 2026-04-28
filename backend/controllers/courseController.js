@@ -1,11 +1,33 @@
 const { db } = require('../config/firebase');
 
+// ─── PL only — all courses ────────────────────────────────────────────────────
 const getCourses = async (req, res) => {
   try {
     const snapshot = await db.collection('courses').get();
     const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, courses });
   } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ─── Lecturer only — courses assigned to THIS lecturer ───────────────────────
+const getLecturerCourses = async (req, res) => {
+  try {
+    const lecturerId = req.headers['x-user-id'];
+
+    if (!lecturerId) {
+      return res.json({ success: true, courses: [] });
+    }
+
+    const snap = await db.collection('courses')
+      .where('lecturerId', '==', lecturerId)
+      .get();
+
+    const courses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json({ success: true, courses });
+  } catch (error) {
+    console.error('getLecturerCourses error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -35,14 +57,14 @@ const createCourse = async (req, res) => {
       courseName,
       courseCode,
       classId,
-      className: className || '',
-      venue: venue || '',
-      day: day || '',
-      time: time || '',
+      className:    className    || '',
+      venue:        venue        || '',
+      day:          day          || '',
+      time:         time         || '',
       lecturerId,
       lecturerName: lecturerName || '',
-      createdBy: "test_user",
-      createdAt: new Date().toISOString()
+      createdBy:    '',
+      createdAt:    new Date().toISOString()
     };
 
     const docRef = await db.collection('courses').add(courseData);
@@ -77,4 +99,11 @@ const getLecturers = async (req, res) => {
   }
 };
 
-module.exports = { getCourses, getCourseById, createCourse, getClasses, getLecturers };
+module.exports = {
+  getCourses,
+  getLecturerCourses, 
+  getCourseById,
+  createCourse,
+  getClasses,
+  getLecturers,
+};
