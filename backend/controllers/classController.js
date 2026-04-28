@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
 
-// Get all classes (for PL/PRL only - NOT for students)
+// Get all classes for pl and prl only
 const getClasses = async (req, res) => {
   try {
     const snapshot = await db.collection('classSchedules').get();
@@ -11,7 +11,7 @@ const getClasses = async (req, res) => {
   }
 };
 
-// Create new class (PL only)
+// Create new class PL only
 const createClass = async (req, res) => {
   try {
     const { className, facultyName, venue, day, time } = req.body;
@@ -42,7 +42,7 @@ const createClass = async (req, res) => {
   }
 };
 
-// Get students for a class (for PL)
+// Get students for a class 
 const getClassStudents = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -58,7 +58,7 @@ const getClassStudents = async (req, res) => {
   }
 };
 
-// Assign student to class (PL only)
+// Assign student to class 
 const assignStudent = async (req, res) => {
   try {
     const { studentId, classId } = req.body;
@@ -78,7 +78,7 @@ const assignStudent = async (req, res) => {
   }
 };
 
-// Get single class by ID - WITH ACCESS CONTROL
+// Get single class by ID 
 const getClassById = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -88,7 +88,7 @@ const getClassById = async (req, res) => {
     const userDoc = await db.collection('users').doc(studentId).get();
     const studentClassId = userDoc.data()?.classId;
     
-    // IMPORTANT: Student can ONLY see their own class
+    // Student can ONLY see their own class
     if (!studentClassId || studentClassId !== classId) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }

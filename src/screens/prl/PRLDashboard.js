@@ -8,10 +8,10 @@ import {
   SafeAreaView,
   StatusBar,
   ActivityIndicator,
+  Alert,
 } from "react-native";
-import { signOut } from "firebase/auth";
-import { auth, db } from "../../firebase/config";
-import { collection, getDocs } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "../../services/api";
 
 const C = {
   navy:   "#0f1f3d",
@@ -41,9 +41,8 @@ function NavCard({ title, subtitle, route, navigation }) {
 }
 
 export default function PRLDashboard({ navigation }) {
-  const user = auth.currentUser;
-
   const [statsLoading, setStatsLoading] = useState(true);
+  const [userName, setUserName] = useState("");
   const [stats, setStats] = useState({
     courses: 0,
     lecturers: 0,
@@ -51,42 +50,40 @@ export default function PRLDashboard({ navigation }) {
     reviewedReports: 0,
   });
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [coursesSnap, reportsSnap, usersSnap] = await Promise.all([
-          getDocs(collection(db, "courses")),
-          getDocs(collection(db, "lectureReports")),
-          getDocs(collection(db, "users")),
-        ]);
-
-        const lecturersCount = usersSnap.docs
-          .map((d) => d.data())
-          .filter((u) => u.role === "lecturer").length;
-
-        const reports = reportsSnap.docs.map((d) => d.data());
-        const pending  = reports.filter((r) => r.status === "pending").length;
-        const reviewed = reports.filter((r) => r.status === "reviewed").length;
-
-        setStats({
-          courses:        coursesSnap.size,
-          lecturers:      lecturersCount,
-          pendingReports: pending,
-          reviewedReports: reviewed,
-        });
-      } catch (e) {
-        console.log(e.message);
-      } finally {
-        setStatsLoading(false);
+  const fetchStats = async () => {
+    try {
+      const response = await api.get("/prl/stats");
+      if (response.data.success) {
+        setStats(response.data.stats);
       }
-    };
+    } catch (error) {
+      console.log("Error fetching stats:", error);
+      Alert.alert("Error", error.response?.data?.error || "Failed to load stats");
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
+  const getUserName = async () => {
+    const userData = await AsyncStorage.getItem("user_data");
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserName(user.username || user.email || "PRL");
+    }
+  };
+
+  useEffect(() => {
+    getUserName();
     fetchStats();
   }, []);
 
   const logout = async () => {
-    await signOut(auth);
-    navigation.replace("Login");
+    try {
+      await AsyncStorage.multiRemove(["auth_token", "user_role", "user_data"]);
+      navigation.replace("Login");
+    } catch (error) {
+      Alert.alert("Error", error.message);
+    }
   };
 
   if (statsLoading) {
@@ -103,10 +100,9 @@ export default function PRLDashboard({ navigation }) {
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-
         <View style={s.header}>
           <Text style={s.eyebrow}>Principal Lecturer</Text>
-          <Text style={s.headerTitle}>{user?.displayName || "Dashboard"}</Text>
+          <Text style={s.headerTitle}>{userName}</Text>
           <Text style={s.headerSub}>Supervisor Dashboard</Text>
 
           <View style={s.statStrip}>
@@ -121,12 +117,12 @@ export default function PRLDashboard({ navigation }) {
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{stats.pendingReports}</Text>
+              <Text style={[s.statNum, { color: "#fbbf24" }]}>{stats.pendingReports}</Text>
               <Text style={s.statMeta}>Pending</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{stats.reviewedReports}</Text>
+              <Text style={[s.statNum, { color: "#4ade80" }]}>{stats.reviewedReports}</Text>
               <Text style={s.statMeta}>Reviewed</Text>
             </View>
           </View>
@@ -169,7 +165,6 @@ export default function PRLDashboard({ navigation }) {
             <Text style={s.logoutArrow}>›</Text>
           </TouchableOpacity>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
