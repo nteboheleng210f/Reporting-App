@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -168,17 +169,19 @@ export default function ClassScheduleScreen() {
   const [day,         setDay]         = useState("");
   const [time,        setTime]        = useState("");
 
-  // Get user role
   const getUserRole = async () => {
     const role = await AsyncStorage.getItem("user_role");
     setUserRole(role || "student");
     return role;
   };
 
-  // Load classes
-  const loadClasses = async () => {
+  // ─── Load classes — endpoint depends on role ─────────────────────────────────
+  // PL  → GET /classes       (all classes, no filter)
+  // Lecturer → GET /classes/mine  (only classes from their assigned courses)
+  const loadClasses = async (role) => {
     try {
-      const response = await api.get("/classes");
+      const endpoint = role === "lecturer" ? "/classes/mine" : "/classes";
+      const response = await api.get(endpoint);
       if (response.data.success) {
         setSchedules(response.data.classes);
       }
@@ -187,13 +190,11 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Load students (for PL only)
   const loadStudents = async (classId) => {
     try {
       const response = await api.get(`/classes/${classId}/students`);
       if (response.data.success) {
         setStudents(response.data.students);
-        
         const map = {};
         response.data.students.forEach(student => {
           if (student.assigned) map[student.id] = classId;
@@ -205,7 +206,6 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Create new class
   const createClass = async () => {
     if (!className || !facultyName || !venue || !day || !time) {
       return Alert.alert("Missing fields", "Please fill all fields.");
@@ -214,20 +214,13 @@ export default function ClassScheduleScreen() {
     setLoading(true);
     try {
       const response = await api.post("/classes", {
-        className,
-        facultyName,
-        venue,
-        day,
-        time
+        className, facultyName, venue, day, time,
       });
 
       if (response.data.success) {
         setSchedules(prev => [...prev, response.data.class]);
-        setClassName("");
-        setFacultyName("");
-        setVenue("");
-        setDay("");
-        setTime("");
+        setClassName(""); setFacultyName("");
+        setVenue(""); setDay(""); setTime("");
         Alert.alert("Success", "Class created successfully.");
       }
     } catch (error) {
@@ -237,7 +230,6 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Assign student to class
   const assignStudent = async (studentId, classId) => {
     try {
       const response = await api.post("/classes/assign", { studentId, classId });
@@ -250,23 +242,21 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Handle class selection (for PL)
-  const handleClassSelect = async (classId, className) => {
+  const handleClassSelect = async (classId, name) => {
     if (selectedClassId === classId) {
       setSelectedClassId(null);
       setSelectedClassName("");
     } else {
       setSelectedClassId(classId);
-      setSelectedClassName(className);
+      setSelectedClassName(name);
       await loadStudents(classId);
     }
   };
 
-  // Initialize
   useEffect(() => {
     const init = async () => {
       const role = await getUserRole();
-      await loadClasses();
+      await loadClasses(role);   // ✅ pass role so correct endpoint is used
       setFetching(false);
     };
     init();
@@ -305,12 +295,14 @@ export default function ClassScheduleScreen() {
         contentContainerStyle={s.body}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel text={isLecturer ? "Your Assigned Courses" : "Scheduled Classes"} />
+        <SectionLabel
+          text={isLecturer ? "Your Assigned Classes" : "Scheduled Classes"}
+        />
 
         {schedules.length === 0 ? (
           <View style={s.emptyCard}>
             <Text style={s.emptyTitle}>
-              {isLecturer ? "No courses assigned yet" : "No classes created yet"}
+              {isLecturer ? "No classes assigned yet" : "No classes created yet"}
             </Text>
             <Text style={s.emptyText}>
               {isLecturer
@@ -330,7 +322,7 @@ export default function ClassScheduleScreen() {
           ))
         )}
 
-        {!isLecturer && isPL && selectedClassId && (
+        {isPL && selectedClassId && (
           <>
             <SectionLabel text={`Assign Students — ${selectedClassName}`} />
 
@@ -356,55 +348,30 @@ export default function ClassScheduleScreen() {
           </>
         )}
 
-        {!isLecturer && isPL && (
+        {isPL && (
           <>
             <FormSection title="Create New Class" />
 
             <View style={s.formCard}>
               <View style={s.row}>
                 <View style={{ flex: 1 }}>
-                  <Field
-                    label="Class Name"
-                    value={className}
-                    onChangeText={setClassName}
-                    placeholder="e.g. BSCSMY1"
-                  />
+                  <Field label="Class Name" value={className} onChangeText={setClassName} placeholder="e.g. BSCSMY1" />
                 </View>
                 <View style={{ width: 12 }} />
                 <View style={{ flex: 1 }}>
-                  <Field
-                    label="Faculty"
-                    value={facultyName}
-                    onChangeText={setFacultyName}
-                    placeholder="e.g. FICT"
-                  />
+                  <Field label="Faculty" value={facultyName} onChangeText={setFacultyName} placeholder="e.g. FICT" />
                 </View>
               </View>
 
-              <Field
-                label="Venue"
-                value={venue}
-                onChangeText={setVenue}
-                placeholder="e.g. Room 1"
-              />
+              <Field label="Venue" value={venue} onChangeText={setVenue} placeholder="e.g. Room 1" />
 
               <View style={s.row}>
                 <View style={{ flex: 1 }}>
-                  <Field
-                    label="Day"
-                    value={day}
-                    onChangeText={setDay}
-                    placeholder="e.g. Monday"
-                  />
+                  <Field label="Day" value={day} onChangeText={setDay} placeholder="e.g. Monday" />
                 </View>
                 <View style={{ width: 12 }} />
                 <View style={{ flex: 1 }}>
-                  <Field
-                    label="Time"
-                    value={time}
-                    onChangeText={setTime}
-                    placeholder="e.g. 08:00–10:00"
-                  />
+                  <Field label="Time" value={time} onChangeText={setTime} placeholder="e.g. 08:00–10:00" />
                 </View>
               </View>
 
@@ -437,293 +404,112 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.2,
-    color: C.gold,
-    textTransform: "uppercase",
-    marginBottom: 6,
+    fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
+    color: C.gold, textTransform: "uppercase", marginBottom: 6,
   },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: C.white,
-    marginBottom: 4,
-  },
-  headerSub: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.5)",
-  },
+  headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
+  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)" },
 
   body: { padding: 16, paddingBottom: 48 },
 
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1,
-    color: C.muted,
-    textTransform: "uppercase",
-    marginTop: 20,
-    marginBottom: 10,
+    fontSize: 11, fontWeight: "600", letterSpacing: 1,
+    color: C.muted, textTransform: "uppercase", marginTop: 20, marginBottom: 10,
   },
 
   classCard: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 14, padding: 16, marginBottom: 10,
   },
-  classCardSelected: {
-    borderColor: C.navy,
-    borderLeftWidth: 3,
-    borderLeftColor: C.gold,
-  },
-  classCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
+  classCardSelected: { borderColor: C.navy, borderLeftWidth: 3, borderLeftColor: C.gold },
+  classCardHeader:   { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 },
   classInitials: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: C.navy,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+    width: 40, height: 40, borderRadius: 10, backgroundColor: C.navy,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  classInitialsText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: C.gold,
-  },
-  classCardName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: 2,
-  },
-  classCardFaculty: {
-    fontSize: 12,
-    color: C.muted,
-  },
-  assignedPill: {
-    backgroundColor: C.greenBg,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  assignedPillText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: C.green,
-  },
+  classInitialsText: { fontSize: 13, fontWeight: "700", color: C.gold },
+  classCardName:     { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 2 },
+  classCardFaculty:  { fontSize: 12, color: C.muted },
 
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 12,
+  assignedPill: {
+    backgroundColor: C.greenBg, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
   },
-  metaChip: {
-    backgroundColor: C.badge,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  metaChipText: {
-    fontSize: 11,
-    color: C.muted,
-    fontWeight: "500",
-  },
+  assignedPillText: { fontSize: 11, fontWeight: "600", color: C.green },
+
+  metaRow:     { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
+  metaChip:    { backgroundColor: C.badge, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
+  metaChipText:{ fontSize: 11, color: C.muted, fontWeight: "500" },
 
   assignToggleBtn: {
-    backgroundColor: C.badge,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.badge, borderRadius: 8, paddingVertical: 8,
+    alignItems: "center", borderWidth: 1, borderColor: C.border,
   },
-  assignToggleBtnActive: {
-    backgroundColor: C.navy,
-    borderColor: C.navy,
-  },
-  assignToggleText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: C.navy,
-  },
-  assignToggleTextActive: {
-    color: C.white,
-  },
+  assignToggleBtnActive:   { backgroundColor: C.navy, borderColor: C.navy },
+  assignToggleText:        { fontSize: 12, fontWeight: "600", color: C.navy },
+  assignToggleTextActive:  { color: C.white },
 
   emptyCard: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 14,
-    padding: 28,
-    alignItems: "center",
-    marginBottom: 10,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 14, padding: 28, alignItems: "center", marginBottom: 10,
   },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  emptyText: {
-    fontSize: 13,
-    color: C.muted,
-    textAlign: "center",
-    lineHeight: 20,
-  },
+  emptyTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
+  emptyText:  { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
 
   studentPanel: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 14,
-    overflow: "hidden",
-    marginBottom: 10,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 14, overflow: "hidden", marginBottom: 10,
   },
   panelHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    padding: 14, borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  panelHeaderTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: C.text,
-  },
-  panelHeaderCount: {
-    fontSize: 12,
-    color: C.muted,
-  },
+  panelHeaderTitle: { fontSize: 13, fontWeight: "700", color: C.text },
+  panelHeaderCount: { fontSize: 12, color: C.muted },
 
   studentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    gap: 10,
+    flexDirection: "row", alignItems: "center",
+    paddingVertical: 12, paddingHorizontal: 14,
+    borderBottomWidth: 1, borderBottomColor: C.border, gap: 10,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: C.badge,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+    width: 32, height: 32, borderRadius: 16, backgroundColor: C.badge,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  avatarText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: C.navy,
-  },
-  studentName: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: C.text,
-  },
-  studentEmail: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 1,
-  },
-  assignBtn: {
-    backgroundColor: C.navy,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    flexShrink: 0,
-  },
-  assignBtnDone: {
-    backgroundColor: C.greenBg,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-  },
-  assignBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: C.white,
-  },
-  assignBtnTextDone: {
-    color: C.green,
-  },
+  avatarText:  { fontSize: 11, fontWeight: "600", color: C.navy },
+  studentName: { fontSize: 13, fontWeight: "600", color: C.text },
+  studentEmail:{ fontSize: 11, color: C.muted, marginTop: 1 },
+
+  assignBtn:         { backgroundColor: C.navy, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, flexShrink: 0 },
+  assignBtnDone:     { backgroundColor: C.greenBg, borderWidth: 1, borderColor: "#bbf7d0" },
+  assignBtnText:     { fontSize: 12, fontWeight: "600", color: C.white },
+  assignBtnTextDone: { color: C.green },
 
   formSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 24,
-    marginBottom: 12,
-    gap: 10,
+    flexDirection: "row", alignItems: "center", marginTop: 24, marginBottom: 12, gap: 10,
   },
   formSectionText: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
-    color: C.navy,
-    textTransform: "uppercase",
-    flexShrink: 0,
+    fontSize: 11, fontWeight: "700", letterSpacing: 1,
+    color: C.navy, textTransform: "uppercase", flexShrink: 0,
   },
-  formSectionLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: C.border,
-  },
+  formSectionLine: { flex: 1, height: 1, backgroundColor: C.border },
 
   formCard: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 14, padding: 16,
   },
-
   row: { flexDirection: "row" },
 
-  field: { marginBottom: 14 },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: C.text,
-    marginBottom: 6,
-  },
+  field:      { marginBottom: 14 },
+  fieldLabel: { fontSize: 12, fontWeight: "600", color: C.text, marginBottom: 6 },
   input: {
-    backgroundColor: C.bg,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: C.text,
+    backgroundColor: C.bg, borderWidth: 1, borderColor: C.border,
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14, color: C.text,
   },
 
   submitBtn: {
-    backgroundColor: C.navy,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 4,
+    backgroundColor: C.navy, borderRadius: 12,
+    padding: 16, alignItems: "center", marginTop: 4,
   },
-  submitText: {
-    color: C.white,
-    fontWeight: "700",
-    fontSize: 14,
-    letterSpacing: 0.4,
-  },
+  submitText: { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
 });

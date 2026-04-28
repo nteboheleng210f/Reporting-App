@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
 
-// Get all classes for pl and prl only
+
 const getClasses = async (req, res) => {
   try {
     const snapshot = await db.collection('classSchedules').get();
@@ -11,7 +11,55 @@ const getClasses = async (req, res) => {
   }
 };
 
-// Create new class PL only
+
+const getLecturerClasses = async (req, res) => {
+  try {
+    const lecturerId = req.headers['x-user-id'];
+
+    if (!lecturerId) {
+      return res.status(400).json({ success: false, error: 'Lecturer ID required' });
+    }
+
+    
+    const coursesSnap = await db.collection('courses')
+      .where('lecturerId', '==', lecturerId)
+      .get();
+
+    if (coursesSnap.empty) {
+      return res.json({ success: true, classes: [] });
+    }
+
+   
+    const classIds = [
+      ...new Set(
+        coursesSnap.docs
+          .map(doc => doc.data().classId)
+          .filter(Boolean)
+      )
+    ];
+
+    if (classIds.length === 0) {
+      return res.json({ success: true, classes: [] });
+    }
+
+  
+    const classPromises = classIds.map(id =>
+      db.collection('classSchedules').doc(id).get()
+    );
+    const classDocs = await Promise.all(classPromises);
+
+    const classes = classDocs
+      .filter(doc => doc.exists)
+      .map(doc => ({ id: doc.id, ...doc.data() }));
+
+    res.json({ success: true, classes });
+  } catch (error) {
+    console.error('getLecturerClasses error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
 const createClass = async (req, res) => {
   try {
     const { className, facultyName, venue, day, time } = req.body;
@@ -27,30 +75,32 @@ const createClass = async (req, res) => {
       day,
       time,
       createdAt: new Date().toISOString(),
-      createdBy: "admin"
+      createdBy: 'admin',
     };
 
     const docRef = await db.collection('classSchedules').add(classData);
 
-    res.status(201).json({ 
-      success: true, 
+    res.status(201).json({
+      success: true,
       message: 'Class created successfully',
-      class: { id: docRef.id, ...classData }
+      class: { id: docRef.id, ...classData },
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// Get students for a class 
+
 const getClassStudents = async (req, res) => {
   try {
     const { classId } = req.params;
-    const studentsSnap = await db.collection('users').where('role', '==', 'student').get();
+    const studentsSnap = await db.collection('users')
+      .where('role', '==', 'student')
+      .get();
     const students = studentsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      assigned: doc.data().classId === classId
+      assigned: doc.data().classId === classId,
     }));
     res.json({ success: true, students });
   } catch (error) {
@@ -58,7 +108,7 @@ const getClassStudents = async (req, res) => {
   }
 };
 
-// Assign student to class 
+
 const assignStudent = async (req, res) => {
   try {
     const { studentId, classId } = req.body;
@@ -68,8 +118,8 @@ const assignStudent = async (req, res) => {
     }
 
     await db.collection('users').doc(studentId).update({
-      classId: classId,
-      updatedAt: new Date().toISOString()
+      classId,
+      updatedAt: new Date().toISOString(),
     });
 
     res.json({ success: true, message: 'Student assigned successfully' });
@@ -78,21 +128,19 @@ const assignStudent = async (req, res) => {
   }
 };
 
-// Get single class by ID 
+
 const getClassById = async (req, res) => {
   try {
     const { classId } = req.params;
     const studentId = req.headers['x-user-id'];
-    
-    // Get student's assigned class
+
     const userDoc = await db.collection('users').doc(studentId).get();
     const studentClassId = userDoc.data()?.classId;
-    
-    // Student can ONLY see their own class
+
     if (!studentClassId || studentClassId !== classId) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
-    
+
     const docSnap = await db.collection('classSchedules').doc(classId).get();
 
     if (!docSnap.exists) {
@@ -105,4 +153,11 @@ const getClassById = async (req, res) => {
   }
 };
 
-module.exports = { getClasses, createClass, getClassStudents, assignStudent, getClassById };
+module.exports = {
+  getClasses,
+  getLecturerClasses,
+  createClass,
+  getClassStudents,
+  assignStudent,
+  getClassById,
+};
