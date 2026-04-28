@@ -1,194 +1,141 @@
 const { db } = require('../config/firebase');
 
-// Get monitoring data based on user role
-const getMonitoringData = async (req, res) => {
+// ─── Student monitoring — filtered to THIS student only ───────────────────────
+const getStudentMonitoring = async (req, res) => {
   try {
-    // For testing without auth, use a default role
-    // In production, get role from req.userRole
-    const role = req.query.role || 'student';
-    
-    let data = {};
+    const studentId = req.headers['x-user-id'];
+    if (!studentId) return res.status(400).json({ success: false, error: 'Student ID required' });
 
-    if (role === 'student') {
-      // Student: get their attendance records
-      const attendanceSnap = await db.collection('attendance')
-        .orderBy('date', 'desc')
-        .get();
-      
-      const attendance = attendanceSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Get reports for their class
-      const reportsSnap = await db.collection('lectureReports')
-        .orderBy('createdAt', 'desc')
-        .get();
-      
-      const reports = reportsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      data = { attendance, reports };
-      
-    } else if (role === 'lecturer') {
-      // Lecturer: get their own reports
-      const reportsSnap = await db.collection('lectureReports')
-        .orderBy('createdAt', 'desc')
-        .get();
-      
-      const reports = reportsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Get their courses
-      const coursesSnap = await db.collection('courses').get();
-      const courses = coursesSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Calculate stats
-      const totalPresent = reports.reduce((sum, r) => sum + (Number(r.actualPresent) || 0), 0);
-      const totalRegistered = reports.reduce((sum, r) => sum + (Number(r.totalRegistered) || 0), 0);
-      
-      data = { 
-        reports, 
-        courses,
-        stats: { totalPresent, totalRegistered }
-      };
-      
-    } else if (role === 'prl') {
-      // PRL: get all reports for review
-      const reportsSnap = await db.collection('lectureReports')
-        .orderBy('createdAt', 'desc')
-        .get();
-      
-      const reports = reportsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      const pending = reports.filter(r => r.status === 'pending');
-      const reviewed = reports.filter(r => r.status === 'reviewed');
-      
-      data = { reports, pending, reviewed };
-      
-    } else if (role === 'pl') {
-      // PL: get complete system overview
-      const reportsSnap = await db.collection('lectureReports')
-        .orderBy('createdAt', 'desc')
-        .get();
-      
-      const reports = reportsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      const coursesSnap = await db.collection('courses').get();
-      const courses = coursesSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      const usersSnap = await db.collection('users').get();
-      const users = usersSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      const lecturers = users.filter(u => u.role === 'lecturer');
-      const students = users.filter(u => u.role === 'student');
-      
-      // Calculate overall attendance
-      let totalPresent = 0;
-      let totalRegistered = 0;
-      reports.forEach(r => {
-        totalPresent += Number(r.actualPresent) || 0;
-        totalRegistered += Number(r.totalRegistered) || 0;
-      });
-      const attendancePercentage = totalRegistered > 0 
-        ? Math.round((totalPresent / totalRegistered) * 100) 
-        : 0;
-      
-      data = { 
-        reports, 
-        courses,
-        users: { lecturers, students },
-        stats: { attendancePercentage, totalPresent, totalRegistered }
-      };
-    }
+    // Read classId from Firestore — never trust query params
+    const userDoc = await db.collection('users').doc(studentId).get();
+    if (!userDoc.exists) return res.status(404).json({ success: false, error: 'User not found' });
 
-    res.json({ success: true, data, role });
-    
-  } catch (error) {
-    console.error("Monitoring error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
+    const classId = userDoc.data()?.classId;
 
-// Get student attendance only
-const getStudentAttendanceMonitoring = async (req, res) => {
-  try {
-    const snapshot = await db.collection('attendance')
+    // Attendance — filtered to this student
+    const attSnap = await db.collection('attendance')
+      .where('studentId', '==', studentId)
       .orderBy('date', 'desc')
       .get();
-    
-    const attendance = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    res.json({ success: true, attendance });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
+    const attendance = attSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-// Get lecturer reports only
-const getLecturerReports = async (req, res) => {
-  try {
-    const snapshot = await db.collection('lectureReports')
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    const reports = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    res.json({ success: true, reports });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
+    // Reports — only for the student's class (so they see lecture history for their class)
+    let reports = [];
+    if (classId) {
+      const repSnap = await db.collection('lectureReports')
+        .where('classId', '==', classId)
+        .orderBy('createdAt', 'desc')
+        .get();
+      reports = repSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
 
-// Get PRL review data
-const getPRLReviewData = async (req, res) => {
-  try {
-    const snapshot = await db.collection('lectureReports')
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    const reports = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    const pending = reports.filter(r => r.status === 'pending');
-    const reviewed = reports.filter(r => r.status === 'reviewed');
-    
-    res.json({ 
-      success: true, 
+    const present = attendance.filter(a => a.status === 'Present').length;
+    const total   = attendance.length;
+    const attendancePercent = total > 0 ? Math.round((present / total) * 100) : 0;
+
+    res.json({
+      success: true,
+      attendance,
       reports,
-      pending,
-      reviewed,
+      stats: { present, absent: total - present, total, attendancePercent }
+    });
+  } catch (error) {
+    console.error('getStudentMonitoring error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ─── Lecturer monitoring — filtered to THIS lecturer only ────────────────────
+const getLecturerMonitoring = async (req, res) => {
+  try {
+    const lecturerId = req.headers['x-user-id'];
+    if (!lecturerId) return res.status(400).json({ success: false, error: 'Lecturer ID required' });
+
+    // Only this lecturer's reports
+    const repSnap = await db.collection('lectureReports')
+      .where('lecturerId', '==', lecturerId)
+      .orderBy('createdAt', 'desc')
+      .get();
+    const reports = repSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Only this lecturer's courses
+    const courseSnap = await db.collection('courses')
+      .where('lecturerId', '==', lecturerId)
+      .get();
+    const courses = courseSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const totalPresent    = reports.reduce((s, r) => s + (Number(r.actualPresent)   || 0), 0);
+    const totalRegistered = reports.reduce((s, r) => s + (Number(r.totalRegistered) || 0), 0);
+    const attendancePercent = totalRegistered > 0
+      ? Math.round((totalPresent / totalRegistered) * 100) : 0;
+
+    res.json({
+      success: true,
+      reports,
+      courses,
+      stats: { totalReports: reports.length, totalCourses: courses.length, totalPresent, totalRegistered, attendancePercent }
+    });
+  } catch (error) {
+    console.error('getLecturerMonitoring error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ─── PRL monitoring — all reports for review ─────────────────────────────────
+const getPRLMonitoring = async (req, res) => {
+  try {
+    const snap = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
+    const reports  = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const pending  = reports.filter(r => r.status === 'pending');
+    const reviewed = reports.filter(r => r.status === 'reviewed');
+
+    res.json({
+      success: true,
+      reports, pending, reviewed,
+      stats: { total: reports.length, pending: pending.length, reviewed: reviewed.length }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ─── PL monitoring — full system overview ────────────────────────────────────
+const getPLMonitoring = async (req, res) => {
+  try {
+    const [repSnap, courseSnap, userSnap] = await Promise.all([
+      db.collection('lectureReports').orderBy('createdAt', 'desc').get(),
+      db.collection('courses').get(),
+      db.collection('users').get(),
+    ]);
+
+    const reports  = repSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const courses  = courseSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const users    = userSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const lecturers = users.filter(u => u.role === 'lecturer');
+    const students  = users.filter(u => u.role === 'student');
+
+    let totalPresent = 0, totalRegistered = 0;
+    reports.forEach(r => {
+      totalPresent    += Number(r.actualPresent)   || 0;
+      totalRegistered += Number(r.totalRegistered) || 0;
+    });
+
+    const attendancePercent = totalRegistered > 0
+      ? Math.round((totalPresent / totalRegistered) * 100) : 0;
+    const pending  = reports.filter(r => r.status === 'pending').length;
+    const reviewed = reports.filter(r => r.status === 'reviewed').length;
+
+    res.json({
+      success: true,
+      reports: reports.slice(0, 20),
       stats: {
-        total: reports.length,
-        pending: pending.length,
-        reviewed: reviewed.length
+        totalReports: reports.length,
+        pending, reviewed,
+        totalCourses:   courses.length,
+        totalLecturers: lecturers.length,
+        totalStudents:  students.length,
+        attendancePercent,
       }
     });
   } catch (error) {
@@ -196,66 +143,4 @@ const getPRLReviewData = async (req, res) => {
   }
 };
 
-// Get PL system overview
-const getPLOverview = async (req, res) => {
-  try {
-    const reportsSnap = await db.collection('lectureReports').get();
-    const reports = reportsSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    const coursesSnap = await db.collection('courses').get();
-    const courses = coursesSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    const usersSnap = await db.collection('users').get();
-    const users = usersSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    const lecturers = users.filter(u => u.role === 'lecturer');
-    const students = users.filter(u => u.role === 'student');
-    
-    // Calculate stats
-    let totalPresent = 0;
-    let totalRegistered = 0;
-    reports.forEach(r => {
-      totalPresent += Number(r.actualPresent) || 0;
-      totalRegistered += Number(r.totalRegistered) || 0;
-    });
-    
-    const pendingReports = reports.filter(r => r.status === 'pending').length;
-    const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
-    const attendancePercentage = totalRegistered > 0 
-      ? Math.round((totalPresent / totalRegistered) * 100) 
-      : 0;
-    
-    res.json({ 
-      success: true, 
-      stats: {
-        totalReports: reports.length,
-        pendingReports,
-        reviewedReports,
-        totalCourses: courses.length,
-        totalLecturers: lecturers.length,
-        totalStudents: students.length,
-        attendancePercentage
-      },
-      recentReports: reports.slice(0, 20)
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-module.exports = { 
-  getMonitoringData, 
-  getStudentAttendanceMonitoring,
-  getLecturerReports,
-  getPRLReviewData,
-  getPLOverview
-};
+module.exports = { getStudentMonitoring, getLecturerMonitoring, getPRLMonitoring, getPLMonitoring };
