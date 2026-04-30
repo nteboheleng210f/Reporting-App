@@ -1,27 +1,27 @@
 const { db } = require('../config/firebase');
 
-// Get PL dashboard stats
+
 const getPLStats = async (req, res) => {
   try {
-    // Get all courses
+   
     const coursesSnap = await db.collection('courses').get();
     const coursesCount = coursesSnap.size;
 
-    // Get all classes
+  
     const classesSnap = await db.collection('classSchedules').get();
     const classesCount = classesSnap.size;
 
-    // Get all lecture reports
+   
     const reportsSnap = await db.collection('lectureReports').get();
     const reportsCount = reportsSnap.size;
 
-    // Get all lecturers
+   
     const lecturersSnap = await db.collection('users')
       .where('role', '==', 'lecturer')
       .get();
     const lecturersCount = lecturersSnap.size;
 
-    // Get all students
+   
     const studentsSnap = await db.collection('users')
       .where('role', '==', 'student')
       .get();

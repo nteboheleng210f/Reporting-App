@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
 
-// ─── PL only — all courses ────────────────────────────────────────────────────
+
 const getCourses = async (req, res) => {
   try {
     const snapshot = await db.collection('courses').get();
@@ -11,7 +11,7 @@ const getCourses = async (req, res) => {
   }
 };
 
-// ─── Lecturer only — courses assigned to THIS lecturer ───────────────────────
+
 const getLecturerCourses = async (req, res) => {
   try {
     const lecturerId = req.headers['x-user-id'];

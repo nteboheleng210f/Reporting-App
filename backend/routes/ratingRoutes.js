@@ -11,7 +11,7 @@ const {
 
 router.get('/courses', getStudentCourses);
 router.get('/check', hasRated);
-router.get('/mine', getMyRatings);  // ADD THIS - student's own ratings
+router.get('/mine', getMyRatings);  
 router.get('/all', getAllRatings);
 router.get('/lecturer/:lecturerId', getLecturerRatings);
 router.post('/', submitRating);
