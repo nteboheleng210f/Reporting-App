@@ -144,6 +144,12 @@ export default function PRLDashboard({ navigation }) {
             navigation={navigation}
           />
           <NavCard
+            title="Classes"
+            subtitle="create classes and assign students"
+            route="Classes"
+            navigation={navigation}
+          />
+          <NavCard
             title="Ratings"
             subtitle="View student ratings"
             route="Ratings"
