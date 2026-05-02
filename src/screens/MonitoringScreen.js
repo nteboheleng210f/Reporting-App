@@ -99,9 +99,9 @@ function EmptyState({ title, subtitle }) {
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function MonitoringScreen() {
-  const [role, setRole]           = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [data, setData]           = useState({});
+  const [role, setRole]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [data, setData]       = useState({});
 
   useEffect(() => {
     const load = async () => {
@@ -109,7 +109,6 @@ export default function MonitoringScreen() {
       setRole(userRole);
 
       try {
-        // ✅ Each role calls its own filtered endpoint — no shared unfiltered /reports or /courses
         if (userRole === "student") {
           const res = await api.get("/monitoring/student");
           if (res.data.success) setData(res.data);
@@ -145,9 +144,10 @@ export default function MonitoringScreen() {
 
   // ─── STUDENT ────────────────────────────────────────────────────────────────
   if (role === "student") {
-    const { attendance = [], reports = [], stats = {} } = data;
-    const attColor = stats.attendancePercent >= 75 ? C.green
-                   : stats.attendancePercent >= 50 ? C.amber : C.red;
+    const { attendance = [], reports = [], stats = {}, assigned } = data;
+
+    const attColor = (stats.attendancePercent ?? 0) >= 75 ? C.green
+                   : (stats.attendancePercent ?? 0) >= 50 ? C.amber : C.red;
 
     return (
       <SafeAreaView style={s.screen}>
@@ -159,32 +159,44 @@ export default function MonitoringScreen() {
         </View>
 
         <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-          <StatStrip>
-            <Stat label="Attendance" value={`${stats.attendancePercent ?? 0}%`} color={attColor} />
-            <Div />
-            <Stat label="Present"  value={stats.present ?? 0} />
-            <Div />
-            <Stat label="Absent"   value={stats.absent ?? 0} />
-            <Div />
-            <Stat label="Total"    value={stats.total ?? 0} />
-          </StatStrip>
 
-          <SectionLabel text="Attendance Records" />
-          {attendance.length === 0 ? (
+          {/* ✅ assigned flag from backend — not guessed from empty arrays */}
+          {assigned === false ? (
             <EmptyState
-              title="No Records Yet"
-              subtitle="Your attendance will appear here once your class starts."
+              title="Not Assigned Yet"
+              subtitle="You haven't been assigned to a class yet. Contact your programme leader to get enrolled."
             />
           ) : (
-            attendance.map(item => <AttRow key={item.id} item={item} />)
-          )}
-
-          {reports.length > 0 && (
             <>
-              <SectionLabel text="Class Lecture History" />
-              {reports.map(item => <ReportRow key={item.id} item={item} />)}
+              <StatStrip>
+                <Stat label="Attendance" value={`${stats.attendancePercent ?? 0}%`} color={attColor} />
+                <Div />
+                <Stat label="Present" value={stats.present ?? 0} />
+                <Div />
+                <Stat label="Absent"  value={stats.absent ?? 0} />
+                <Div />
+                <Stat label="Total"   value={stats.total ?? 0} />
+              </StatStrip>
+
+              <SectionLabel text="Attendance Records" />
+              {attendance.length === 0 ? (
+                <EmptyState
+                  title="No Records Yet"
+                  subtitle="Your attendance will appear here once your class starts."
+                />
+              ) : (
+                attendance.map(item => <AttRow key={item.id} item={item} />)
+              )}
+
+              {reports.length > 0 && (
+                <>
+                  <SectionLabel text="Class Lecture History" />
+                  {reports.map(item => <ReportRow key={item.id} item={item} />)}
+                </>
+              )}
             </>
           )}
+
         </ScrollView>
       </SafeAreaView>
     );
@@ -207,9 +219,9 @@ export default function MonitoringScreen() {
 
         <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
           <StatStrip>
-            <Stat label="Reports" value={stats.totalReports ?? 0} />
+            <Stat label="Reports"        value={stats.totalReports ?? 0} />
             <Div />
-            <Stat label="Courses" value={stats.totalCourses ?? 0} />
+            <Stat label="Courses"        value={stats.totalCourses ?? 0} />
             <Div />
             <Stat label="Avg Attendance" value={`${stats.attendancePercent ?? 0}%`} color={attColor} />
           </StatStrip>
@@ -230,7 +242,7 @@ export default function MonitoringScreen() {
 
   // ─── PRL ────────────────────────────────────────────────────────────────────
   if (role === "prl") {
-    const { pending = [], reports = [], stats = {} } = data;
+    const { pending = [], stats = {} } = data;
 
     return (
       <SafeAreaView style={s.screen}>
@@ -306,13 +318,12 @@ export default function MonitoringScreen() {
     );
   }
 
-  // All roles handled — should never reach here
   return null;
 }
 
 const s = StyleSheet.create({
-  screen:  { flex: 1, backgroundColor: C.bg },
-  centered:{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
+  screen:   { flex: 1, backgroundColor: C.bg },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
 
   header: {
     backgroundColor: C.navy,
@@ -336,10 +347,10 @@ const s = StyleSheet.create({
     flexDirection: "row", backgroundColor: C.navy,
     borderRadius: 12, paddingVertical: 16, marginBottom: 12,
   },
-  statItem:   { flex: 1, alignItems: "center" },
-  statNum:    { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
-  statMeta:   { fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
-  statDivider:{ width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 4 },
+  statItem:    { flex: 1, alignItems: "center" },
+  statNum:     { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
+  statMeta:    { fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
+  statDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 4 },
 
   row: {
     backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
