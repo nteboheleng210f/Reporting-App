@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   getCourses,
+  getStudentCourses,
   getLecturerCourses,
   getCourseById,
   createCourse,
@@ -10,12 +11,12 @@ const {
   getLecturers,
 } = require('../controllers/courseController');
 
-
-router.get('/mine',       getLecturerCourses); 
-router.get('/classes',    getClasses);
-router.get('/lecturers',  getLecturers);
-router.get('/',           getCourses);         
-router.get('/:courseId',  getCourseById);
-router.post('/',          createCourse);
+router.get('/student',     getStudentCourses);
+router.get('/mine',        getLecturerCourses);
+router.get('/classes',     getClasses);
+router.get('/lecturers',   getLecturers);
+router.get('/',            getCourses);
+router.get('/:courseId',   getCourseById);
+router.post('/',           createCourse);
 
 module.exports = router;

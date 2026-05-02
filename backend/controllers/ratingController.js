@@ -1,6 +1,5 @@
 const { db } = require('../config/firebase');
 
-// ─── Submit rating (student) ──────────────────────────────────────────────────
 const submitRating = async (req, res) => {
   try {
     const {
@@ -11,30 +10,66 @@ const submitRating = async (req, res) => {
     const studentId = req.headers['x-user-id'];
 
     if (!lecturerId || !rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ success: false, error: 'Lecturer ID and valid rating (1-5) required' });
+      return res.status(400).json({
+        success: false,
+        error: 'Lecturer ID and valid rating (1–5) required'
+      });
     }
 
-    // Get student name from Firestore
-    let studentName = "Student";
+ 
+    let studentName = 'Student';
     if (studentId) {
       const userDoc = await db.collection('users').doc(studentId).get();
       if (userDoc.exists) {
-        studentName = userDoc.data()?.username || userDoc.data()?.email || "Student";
+        studentName = userDoc.data()?.username || userDoc.data()?.email || 'Student';
       }
     }
 
+    let verifiedClassId = classId || '';
+    let verifiedClassName = className || '';
+    if (studentId) {
+      const userDoc = await db.collection('users').doc(studentId).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        verifiedClassId   = data?.classId   || '';
+        verifiedClassName = data?.className || '';
+      }
+    }
+
+   
+    if (verifiedClassId) {
+      const courseSnap = await db.collection('courses')
+        .where('classId', '==', verifiedClassId)
+        .where('lecturerId', '==', lecturerId)
+        .limit(1)
+        .get();
+
+      if (courseSnap.empty) {
+        return res.status(403).json({
+          success: false,
+          error: 'You are not authorised to rate this course.'
+        });
+      }
+    } else {
+     
+      return res.status(403).json({
+        success: false,
+        error: 'You have not been assigned to a class yet.'
+      });
+    }
+
     const ratingData = {
-      studentId: studentId || "unknown",
+      studentId:    studentId || 'unknown',
       studentName,
       lecturerId,
       lecturerName: lecturerName || '',
-      courseName: courseName || '',
-      courseCode: courseCode || '',
-      classId: classId || '',
-      className: className || '',
-      rating: Number(rating),
-      comment: comment || '',
-      createdAt: new Date().toISOString()
+      courseName:   courseName   || '',
+      courseCode:   courseCode   || '',
+      classId:      verifiedClassId,
+      className:    verifiedClassName,
+      rating:       Number(rating),
+      comment:      comment?.trim() || '',
+      createdAt:    new Date().toISOString()
     };
 
     const docRef = await db.collection('ratings').add(ratingData);
@@ -45,22 +80,27 @@ const submitRating = async (req, res) => {
       ratingId: docRef.id
     });
   } catch (error) {
+    console.error('submitRating error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// ─── Get ALL ratings (PRL/PL only) ───────────────────────────────────────────
+
 const getAllRatings = async (req, res) => {
   try {
-    const snapshot = await db.collection('ratings').orderBy('createdAt', 'desc').get();
+    const snapshot = await db.collection('ratings')
+      .orderBy('createdAt', 'desc')
+      .get();
+
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, ratings });
   } catch (error) {
+    console.error('getAllRatings error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// ─── Get student's OWN ratings only ──────────────────────────────────────────
+
 const getMyRatings = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
@@ -74,33 +114,26 @@ const getMyRatings = async (req, res) => {
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, ratings });
   } catch (error) {
+    console.error('getMyRatings error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// ─── Get courses for THIS student only (filtered by their classId) ────────────
+
 const getStudentCourses = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
 
-    if (!studentId) {
-      return res.json({ success: true, courses: [] });
-    }
+    if (!studentId) return res.json({ success: true, courses: [] });
 
-    // Read student's classId from Firestore — never trust the request body
     const userDoc = await db.collection('users').doc(studentId).get();
-    if (!userDoc.exists) {
-      return res.json({ success: true, courses: [] });
-    }
+    if (!userDoc.exists) return res.json({ success: true, courses: [] });
 
     const classId = userDoc.data()?.classId;
 
-    // Student not assigned yet — return empty, not all courses
-    if (!classId) {
-      return res.json({ success: true, courses: [] });
-    }
+   
+    if (!classId) return res.json({ success: true, courses: [] });
 
-    // Only return courses that belong to the student's class
     const snapshot = await db.collection('courses')
       .where('classId', '==', classId)
       .get();
@@ -108,11 +141,12 @@ const getStudentCourses = async (req, res) => {
     const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, courses });
   } catch (error) {
+    console.error('getStudentCourses error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// ─── Get ratings for THIS lecturer only ──────────────────────────────────────
+
 const getLecturerRatings = async (req, res) => {
   try {
     const lecturerId = req.headers['x-user-id'];
@@ -126,9 +160,11 @@ const getLecturerRatings = async (req, res) => {
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, ratings });
   } catch (error) {
+    console.error('getLecturerRatings error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 const hasRated = async (req, res) => {
   res.json({ success: true, hasRated: false });
@@ -140,5 +176,5 @@ module.exports = {
   getMyRatings,
   getStudentCourses,
   getLecturerRatings,
-  hasRated
+  hasRated,
 };
