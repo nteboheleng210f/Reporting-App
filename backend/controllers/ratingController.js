@@ -16,60 +16,57 @@ const submitRating = async (req, res) => {
       });
     }
 
- 
+    // Get student name and class info
     let studentName = 'Student';
-    if (studentId) {
-      const userDoc = await db.collection('users').doc(studentId).get();
-      if (userDoc.exists) {
-        studentName = userDoc.data()?.username || userDoc.data()?.email || 'Student';
-      }
-    }
-
     let verifiedClassId = classId || '';
     let verifiedClassName = className || '';
+    
     if (studentId) {
       const userDoc = await db.collection('users').doc(studentId).get();
       if (userDoc.exists) {
         const data = userDoc.data();
-        verifiedClassId   = data?.classId   || '';
+        studentName = data?.username || data?.email || 'Student';
+        verifiedClassId = data?.classId || '';
         verifiedClassName = data?.className || '';
       }
     }
 
-   
-    if (verifiedClassId) {
+    // FIX: Verify the course exists and get the CORRECT lecturer ID
+    let finalLecturerId = lecturerId;
+    let finalLecturerName = lecturerName;
+    
+    if (verifiedClassId && courseName) {
       const courseSnap = await db.collection('courses')
         .where('classId', '==', verifiedClassId)
-        .where('lecturerId', '==', lecturerId)
+        .where('courseName', '==', courseName)
         .limit(1)
         .get();
 
-      if (courseSnap.empty) {
+      if (!courseSnap.empty) {
+        const courseData = courseSnap.docs[0].data();
+        // Use the lecturer ID from the course document
+        finalLecturerId = courseData.lecturerId;
+        finalLecturerName = courseData.lecturerName || lecturerName;
+      } else {
         return res.status(403).json({
           success: false,
-          error: 'You are not authorised to rate this course.'
+          error: 'Course not found for your class'
         });
       }
-    } else {
-     
-      return res.status(403).json({
-        success: false,
-        error: 'You have not been assigned to a class yet.'
-      });
     }
 
     const ratingData = {
-      studentId:    studentId || 'unknown',
+      studentId: studentId || 'unknown',
       studentName,
-      lecturerId,
-      lecturerName: lecturerName || '',
-      courseName:   courseName   || '',
-      courseCode:   courseCode   || '',
-      classId:      verifiedClassId,
-      className:    verifiedClassName,
-      rating:       Number(rating),
-      comment:      comment?.trim() || '',
-      createdAt:    new Date().toISOString()
+      lecturerId: finalLecturerId,  // FIXED: Correct lecturer ID
+      lecturerName: finalLecturerName,
+      courseName: courseName || '',
+      courseCode: courseCode || '',
+      classId: verifiedClassId,
+      className: verifiedClassName,
+      rating: Number(rating),
+      comment: comment?.trim() || '',
+      createdAt: new Date().toISOString()
     };
 
     const docRef = await db.collection('ratings').add(ratingData);
@@ -85,7 +82,6 @@ const submitRating = async (req, res) => {
   }
 };
 
-
 const getAllRatings = async (req, res) => {
   try {
     const snapshot = await db.collection('ratings')
@@ -99,7 +95,6 @@ const getAllRatings = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 const getMyRatings = async (req, res) => {
   try {
@@ -119,7 +114,6 @@ const getMyRatings = async (req, res) => {
   }
 };
 
-
 const getStudentCourses = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
@@ -130,8 +124,6 @@ const getStudentCourses = async (req, res) => {
     if (!userDoc.exists) return res.json({ success: true, courses: [] });
 
     const classId = userDoc.data()?.classId;
-
-   
     if (!classId) return res.json({ success: true, courses: [] });
 
     const snapshot = await db.collection('courses')
@@ -146,11 +138,15 @@ const getStudentCourses = async (req, res) => {
   }
 };
 
-
+// FIXED: This ensures lecturers see ratings from students
 const getLecturerRatings = async (req, res) => {
   try {
     const lecturerId = req.headers['x-user-id'];
-    if (!lecturerId) return res.json({ success: true, ratings: [] });
+    console.log("Lecturer ID from header:", lecturerId); // Debug log
+    
+    if (!lecturerId) {
+      return res.json({ success: true, ratings: [] });
+    }
 
     const snapshot = await db.collection('ratings')
       .where('lecturerId', '==', lecturerId)
@@ -158,6 +154,8 @@ const getLecturerRatings = async (req, res) => {
       .get();
 
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log(`Found ${ratings.length} ratings for lecturer ${lecturerId}`); // Debug log
+    
     res.json({ success: true, ratings });
   } catch (error) {
     console.error('getLecturerRatings error:', error);
@@ -165,9 +163,20 @@ const getLecturerRatings = async (req, res) => {
   }
 };
 
-
 const hasRated = async (req, res) => {
   res.json({ success: true, hasRated: false });
+};
+
+// Debug endpoint to check all ratings in database
+const debugAllRatings = async (req, res) => {
+  try {
+    const snapshot = await db.collection('ratings').get();
+    const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log("ALL RATINGS IN DATABASE:", JSON.stringify(ratings, null, 2));
+    res.json({ success: true, ratings, count: ratings.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };
 
 module.exports = {
@@ -177,4 +186,5 @@ module.exports = {
   getStudentCourses,
   getLecturerRatings,
   hasRated,
+  debugAllRatings,
 };
