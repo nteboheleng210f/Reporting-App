@@ -24,8 +24,6 @@ const C = {
   text:   "#102040",
   muted:  "#6c7a96",
   badge:  "#edf0f7",
-  warning: "#f59e0b",
-  danger:  "#dc2626",
 };
 
 function StarPicker({ value, onChange }) {
@@ -129,10 +127,9 @@ function SectionLabel({ text }) {
   return <Text style={s.label}>{text}</Text>;
 }
 
-function EmptyState({ title, subtitle, icon = "📚" }) {
+function EmptyState({ title, subtitle }) {
   return (
     <View style={s.emptyCard}>
-      <Text style={s.emptyIcon}>{icon}</Text>
       <Text style={s.emptyTitle}>{title}</Text>
       <Text style={s.emptySubtitle}>{subtitle}</Text>
     </View>
@@ -150,8 +147,6 @@ export default function RatingScreen() {
   const [rating, setRating]               = useState(0);
   const [comment, setComment]             = useState("");
   const [submitting, setSubmitting]       = useState(false);
-  const [hasClassAssigned, setHasClassAssigned] = useState(true);
-  const [checkingAssignment, setCheckingAssignment] = useState(true);
 
   const getUserRole = async () => {
     const userRole = await AsyncStorage.getItem("user_role");
@@ -159,37 +154,14 @@ export default function RatingScreen() {
     return userRole;
   };
 
-  // Check if student has a class assigned
-  const checkClassAssignment = async () => {
-    try {
-      const response = await api.get("/students/class-assignment");
-      if (response.data.success) {
-        setHasClassAssigned(response.data.hasClassAssigned);
-      }
-    } catch (error) {
-      console.log("Failed to check class assignment:", error);
-      setHasClassAssigned(false);
-    } finally {
-      setCheckingAssignment(false);
-    }
-  };
-
   // ─── Student: courses filtered to their class by backend ─────────────────────
   const loadCourses = async () => {
     try {
+      // ✅ Fixed endpoint — was "/courses" (wrong), now "/ratings/courses"
       const response = await api.get("/ratings/courses");
-      if (response.data.success) {
-        setCourses(response.data.courses);
-        // If no courses, student can't rate
-        if (response.data.courses.length === 0) {
-          setHasClassAssigned(false);
-        }
-      }
+      if (response.data.success) setCourses(response.data.courses);
     } catch (error) {
       console.log("Failed to load courses:", error);
-      if (error.response?.status === 403) {
-        setHasClassAssigned(false);
-      }
     }
   };
 
@@ -214,6 +186,7 @@ export default function RatingScreen() {
   };
 
   // ─── Lecturer: ratings received for them ────────────────────────────────────
+  // Uses /ratings/lecturer/:lecturerId but backend reads lecturerId from header
   const loadLecturerRatings = async () => {
     try {
       const response = await api.get("/ratings/lecturer/me");
@@ -226,12 +199,6 @@ export default function RatingScreen() {
   const submitRating = async () => {
     if (!selectedCourse) return Alert.alert("Select Course", "Please choose a course first.");
     if (!rating) return Alert.alert("Rating Required", "Please select a star rating.");
-    
-    // Double-check class assignment before submitting
-    if (!hasClassAssigned) {
-      Alert.alert("Not Assigned", "You are not assigned to any class. Please contact your program leader.");
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -252,16 +219,9 @@ export default function RatingScreen() {
         setRating(0);
         setComment("");
         await loadMyRatings();
-        await loadCourses(); // Refresh courses to remove rated ones if needed
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || "Failed to submit rating";
-      Alert.alert("Error", errorMsg);
-      
-      // If error indicates no class assignment, update state
-      if (errorMsg.includes("assigned") || errorMsg.includes("authorised")) {
-        setHasClassAssigned(false);
-      }
+      Alert.alert("Error", error.response?.data?.error || "Failed to submit rating");
     } finally {
       setSubmitting(false);
     }
@@ -273,10 +233,10 @@ export default function RatingScreen() {
       const userRole = await getUserRole();
 
       if (userRole === "student") {
-        await checkClassAssignment();
         await loadCourses();
         await loadMyRatings();
       } else if (userRole === "lecturer") {
+        // ✅ Lecturer now loads their own received ratings — no more infinite spinner
         await loadLecturerRatings();
       } else if (userRole === "prl" || userRole === "pl") {
         await loadAllRatings();
@@ -301,37 +261,6 @@ export default function RatingScreen() {
       ? (myRatings.reduce((sum, r) => sum + r.rating, 0) / myRatings.length).toFixed(1)
       : null;
 
-    // Show "not assigned" message if student has no class or no courses
-    if (!hasClassAssigned || courses.length === 0) {
-      return (
-        <SafeAreaView style={s.container}>
-          <View style={s.header}>
-            <Text style={s.eyebrow}>Feedback</Text>
-            <Text style={s.headerTitle}>Rate Your Lecturer</Text>
-            <Text style={s.headerSub}>Share your feedback about your courses</Text>
-          </View>
-          
-          <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-            <EmptyState
-              icon="🎓"
-              title="Not Assigned to Any Class"
-              subtitle="You haven't been assigned to any class yet. Please contact your Programme Leader to get enrolled in courses before you can submit ratings."
-            />
-            
-            {myRatings.length > 0 && (
-              <>
-                <SectionLabel text="Your Previous Ratings" />
-                <AverageBlock average={average} count={myRatings.length} />
-                {myRatings.map((item) => (
-                  <RatingCard key={item.id} item={item} showLecturer />
-                ))}
-              </>
-            )}
-          </ScrollView>
-        </SafeAreaView>
-      );
-    }
-
     return (
       <SafeAreaView style={s.container}>
         <View style={s.header}>
@@ -345,9 +274,8 @@ export default function RatingScreen() {
 
           {courses.length === 0 ? (
             <EmptyState
-              icon="📋"
-              title="No Courses Available"
-              subtitle="No courses are currently available for rating. Check back later or contact your programme leader."
+              title="No Courses Yet"
+              subtitle="You haven't been assigned to any courses. Check back after your program leader assigns you to a class."
             />
           ) : (
             courses.map((item) => (
@@ -370,37 +298,33 @@ export default function RatingScreen() {
             </View>
           )}
 
-          {selectedCourse && (
-            <>
-              <SectionLabel text="Your Rating" />
-              <View style={s.starCard}>
-                <StarPicker value={rating} onChange={setRating} />
-              </View>
+          <SectionLabel text="Your Rating" />
+          <View style={s.starCard}>
+            <StarPicker value={rating} onChange={setRating} />
+          </View>
 
-              <SectionLabel text="Comment (optional)" />
-              <TextInput
-                style={s.input}
-                multiline
-                numberOfLines={4}
-                placeholder="Share your feedback…"
-                placeholderTextColor={C.muted}
-                value={comment}
-                onChangeText={setComment}
-                textAlignVertical="top"
-              />
+          <SectionLabel text="Comment (optional)" />
+          <TextInput
+            style={s.input}
+            multiline
+            numberOfLines={4}
+            placeholder="Share your feedback…"
+            placeholderTextColor={C.muted}
+            value={comment}
+            onChangeText={setComment}
+            textAlignVertical="top"
+          />
 
-              <TouchableOpacity
-                style={[s.submitBtn, (submitting || courses.length === 0) && { opacity: 0.5 }]}
-                onPress={submitRating}
-                disabled={submitting || courses.length === 0}
-                activeOpacity={0.85}
-              >
-                <Text style={s.submitText}>
-                  {submitting ? "Submitting…" : "Submit Rating"}
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
+          <TouchableOpacity
+            style={[s.submitBtn, (submitting || courses.length === 0) && { opacity: 0.5 }]}
+            onPress={submitRating}
+            disabled={submitting || courses.length === 0}
+            activeOpacity={0.85}
+          >
+            <Text style={s.submitText}>
+              {submitting ? "Submitting…" : "Submit Rating"}
+            </Text>
+          </TouchableOpacity>
 
           {myRatings.length > 0 && (
             <>
@@ -417,6 +341,7 @@ export default function RatingScreen() {
   }
 
   // ─── LECTURER VIEW ───────────────────────────────────────────────────────────
+  // ✅ Fixed — was missing entirely, causing infinite loading spinner
   if (role === "lecturer") {
     const average = lecturerRatingsList.length > 0
       ? (lecturerRatingsList.reduce((sum, r) => sum + r.rating, 0) / lecturerRatingsList.length).toFixed(1)
@@ -433,7 +358,6 @@ export default function RatingScreen() {
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {lecturerRatingsList.length === 0 ? (
             <EmptyState
-              icon="⭐"
               title="No Ratings Yet"
               subtitle="Your students haven't submitted any feedback yet."
             />
@@ -495,31 +419,19 @@ export default function RatingScreen() {
           </View>
 
           <SectionLabel text="Lecturer Performance" />
-          {Object.keys(lecturerMap).length === 0 ? (
-            <EmptyState
-              icon="👨‍🏫"
-              title="No Ratings Yet"
-              subtitle="No feedback has been submitted by students yet."
-            />
-          ) : (
-            Object.keys(lecturerMap).map(id => (
-              <View key={id} style={s.lecturerSummaryCard}>
-                <Text style={s.lecturerName}>{lecturerMap[id].name}</Text>
-                <View style={s.lecturerStats}>
-                  <Text style={s.lecturerStat}>⭐ {lecturerMap[id].average} / 5</Text>
-                  <Text style={s.lecturerStat}>📝 {lecturerMap[id].count} reviews</Text>
-                </View>
+          {Object.keys(lecturerMap).map(id => (
+            <View key={id} style={s.lecturerSummaryCard}>
+              <Text style={s.lecturerName}>{lecturerMap[id].name}</Text>
+              <View style={s.lecturerStats}>
+                <Text style={s.lecturerStat}>⭐ {lecturerMap[id].average} / 5</Text>
+                <Text style={s.lecturerStat}>📝 {lecturerMap[id].count} reviews</Text>
               </View>
-            ))
-          )}
+            </View>
+          ))}
 
           <SectionLabel text="All Individual Ratings" />
           {ratings.length === 0 ? (
-            <EmptyState
-              icon="📝"
-              title="No Ratings Yet"
-              subtitle="No feedback has been submitted yet."
-            />
+            <EmptyState title="No Ratings Yet" subtitle="No feedback has been submitted yet." />
           ) : (
             ratings.map((item) => (
               <RatingCard key={item.id} item={item} showLecturer />
@@ -530,6 +442,7 @@ export default function RatingScreen() {
     );
   }
 
+  // Should never reach here — all roles are handled above
   return null;
 }
 
@@ -557,10 +470,9 @@ const s = StyleSheet.create({
 
   emptyCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 32, alignItems: "center", marginBottom: 20,
+    borderRadius: 12, padding: 28, alignItems: "center", marginBottom: 10,
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle:    { fontSize: 16, fontWeight: "700", color: C.text, marginBottom: 8, textAlign: "center" },
+  emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
   emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
 
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
@@ -596,7 +508,7 @@ const s = StyleSheet.create({
   },
   checkMark: { color: C.white, fontSize: 11, fontWeight: "700" },
 
-  selectedSummary: { backgroundColor: C.navy, borderRadius: 12, padding: 16, marginTop: 16, marginBottom: 20 },
+  selectedSummary: { backgroundColor: C.navy, borderRadius: 12, padding: 16, marginTop: 16 },
   selectedSummaryLabel: {
     fontSize: 10, fontWeight: "600", letterSpacing: 1,
     color: C.gold, textTransform: "uppercase", marginBottom: 4,
