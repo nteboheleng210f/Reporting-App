@@ -56,7 +56,6 @@ function EmptyClassCard() {
   );
 }
 
-
 export default function StudentDashboard({ navigation }) {
   const [loading, setLoading]                     = useState(false);
   const [statsLoading, setStatsLoading]           = useState(true);
@@ -76,9 +75,10 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
+  // ✅ Fixed: was /dashboard/student → now /student/stats
   const fetchStats = async () => {
     try {
-      const response = await api.get("/dashboard/student");
+      const response = await api.get("/student/stats");
       if (response.data.success) {
         const { stats, user } = response.data;
         setAttendancePercent(stats.attendancePercent ?? 0);
@@ -91,9 +91,10 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
+  // ✅ Fixed: was /dashboard/student/upcoming-class → now /student/upcoming-class
   const fetchUpcomingClass = async () => {
     try {
-      const response = await api.get("/dashboard/student/upcoming-class");
+      const response = await api.get("/student/upcoming-class");
       if (response.data.success) {
         setUpcomingClass(response.data.upcomingClass || null);
       } else {
@@ -153,18 +154,18 @@ export default function StudentDashboard({ navigation }) {
 
           <View style={s.statStrip}>
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : ""}</Text>
+              <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : "—"}</Text>
               <Text style={s.statMeta}>Attendance</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? ratingsCount : ""}</Text>
+              <Text style={s.statNum}>{isAssigned ? ratingsCount : "—"}</Text>
               <Text style={s.statMeta}>Ratings</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
               <Text style={s.statNum}>
-                {!isAssigned ? "" : classLoading ? "..." : upcomingClass ? "1" : "0"}
+                {!isAssigned ? "—" : classLoading ? "..." : upcomingClass ? "1" : "0"}
               </Text>
               <Text style={s.statMeta}>Upcoming</Text>
             </View>
@@ -250,24 +251,11 @@ const s = StyleSheet.create({
     paddingBottom: 0,
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.2,
-    color: C.gold,
-    textTransform: "uppercase",
-    marginBottom: 6,
+    fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
+    color: C.gold, textTransform: "uppercase", marginBottom: 6,
   },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: C.white,
-    marginBottom: 4,
-  },
-  headerSub: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.5)",
-    marginBottom: 28,
-  },
+  headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
+  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 28 },
 
   statStrip: {
     flexDirection: "row",
@@ -275,116 +263,50 @@ const s = StyleSheet.create({
     borderTopColor: "rgba(255,255,255,0.1)",
     paddingVertical: 16,
   },
-  statItem: { flex: 1, alignItems: "center" },
-  statNum: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: C.white,
-    marginBottom: 2,
-  },
-  statMeta: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.4)",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginVertical: 4,
-  },
+  statItem:    { flex: 1, alignItems: "center" },
+  statNum:     { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
+  statMeta:    { fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
+  statDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 4 },
 
   body: { padding: 16, paddingBottom: 48 },
 
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1,
-    color: C.muted,
-    textTransform: "uppercase",
-    marginBottom: 10,
-    marginTop: 4,
+    fontSize: 11, fontWeight: "600", letterSpacing: 1,
+    color: C.muted, textTransform: "uppercase", marginBottom: 10, marginTop: 4,
   },
 
   classCard: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 12, padding: 16, marginBottom: 16,
   },
-  className: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: 4,
-  },
-  classMeta: { fontSize: 12, color: C.muted, marginBottom: 2 },
+  className:  { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 4 },
+  classMeta:  { fontSize: 12, color: C.muted, marginBottom: 2 },
   classVenue: { fontSize: 12, color: C.muted },
 
   emptyCard: {
-    backgroundColor: C.empty,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 16,
-    alignItems: "center",
+    backgroundColor: C.empty, borderWidth: 1, borderColor: C.border,
+    borderRadius: 12, padding: 24, marginBottom: 16, alignItems: "center",
   },
-  emptyIcon: { fontSize: 32, marginBottom: 10 },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: C.muted,
-    textAlign: "center",
-    lineHeight: 20,
-  },
+  emptyIcon:     { fontSize: 32, marginBottom: 10 },
+  emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
+  emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
 
   navCard: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 12, padding: 16, marginBottom: 8,
+    flexDirection: "row", alignItems: "center",
   },
-  navCardBody: { flex: 1 },
-  navCardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: 3,
-  },
-  navCardSub: { fontSize: 12, color: C.muted },
-  navArrow: { fontSize: 22, color: C.muted, marginLeft: 8 },
+  navCardBody:  { flex: 1 },
+  navCardTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 3 },
+  navCardSub:   { fontSize: 12, color: C.muted },
+  navArrow:     { fontSize: 22, color: C.muted, marginLeft: 8 },
 
   logoutBtn: {
     backgroundColor: C.navy,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 4,
-    marginBottom: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
+    borderRadius: 12, padding: 16,
+    alignItems: "center", marginTop: 4, marginBottom: 16,
+    flexDirection: "row", justifyContent: "space-between",
   },
-  logoutText: {
-    color: C.white,
-    fontWeight: "700",
-    fontSize: 14,
-    letterSpacing: 0.4,
-  },
-  logoutArrow: {
-    fontSize: 22,
-    color: "#f3eeee",
-  },
+  logoutText:  { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
+  logoutArrow: { fontSize: 22, color: "#f3eeee" },
 });
