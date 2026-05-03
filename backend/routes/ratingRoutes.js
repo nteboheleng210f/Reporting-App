@@ -10,16 +10,15 @@ const {
   debugAllRatings,
 } = require('../controllers/ratingController');
 
+// Student routes
 router.get('/courses', getStudentCourses);
 router.get('/mine', getMyRatings);
 router.post('/', submitRating);
 router.get('/has-rated/:courseId?', hasRated);
 
-
 router.get('/lecturer/me', getLecturerRatings);
 
 router.get('/all', getAllRatings);
-
 
 router.get('/debug', debugAllRatings);
 

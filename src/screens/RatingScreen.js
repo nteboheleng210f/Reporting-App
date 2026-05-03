@@ -65,7 +65,7 @@ function CourseCard({ item, selected, onPress }) {
   );
 }
 
-function RatingCard({ item, showLecturer = false }) {
+function RatingCard({ item }) {
   const initials = (item.studentName || "?")
     .split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
@@ -83,10 +83,7 @@ function RatingCard({ item, showLecturer = false }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.studentName}>{item.studentName || "Student"}</Text>
-          <Text style={s.ratingMeta}>
-            {showLecturer ? `${item.lecturerName} · ` : ""}
-            {item.courseName}
-          </Text>
+          <Text style={s.ratingMeta}>{item.courseName}</Text>
         </View>
         <View style={s.ratingBadge}>
           <Text style={s.ratingBadgeNum}>{item.rating}</Text>
@@ -137,16 +134,15 @@ function EmptyState({ title, subtitle }) {
 }
 
 export default function RatingScreen() {
-  const [role, setRole]                   = useState(null);
-  const [loading, setLoading]             = useState(true);
-  const [courses, setCourses]             = useState([]);
+  const [role, setRole] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [ratings, setRatings]             = useState([]);
-  const [myRatings, setMyRatings]         = useState([]);
   const [lecturerRatingsList, setLecturerRatingsList] = useState([]);
-  const [rating, setRating]               = useState(0);
-  const [comment, setComment]             = useState("");
-  const [submitting, setSubmitting]       = useState(false);
+  const [allRatings, setAllRatings] = useState([]);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const getUserRole = async () => {
     const userRole = await AsyncStorage.getItem("user_role");
@@ -154,10 +150,8 @@ export default function RatingScreen() {
     return userRole;
   };
 
-  // ─── Student: courses filtered to their class by backend ─────────────────────
   const loadCourses = async () => {
     try {
-      // ✅ Fixed endpoint — was "/courses" (wrong), now "/ratings/courses"
       const response = await api.get("/ratings/courses");
       if (response.data.success) setCourses(response.data.courses);
     } catch (error) {
@@ -165,28 +159,15 @@ export default function RatingScreen() {
     }
   };
 
-  // ─── PRL/PL: all ratings ─────────────────────────────────────────────────────
   const loadAllRatings = async () => {
     try {
       const response = await api.get("/ratings/all");
-      if (response.data.success) setRatings(response.data.ratings);
+      if (response.data.success) setAllRatings(response.data.ratings);
     } catch (error) {
       console.log("Failed to load all ratings:", error);
     }
   };
 
-  // ─── Student: own ratings only ───────────────────────────────────────────────
-  const loadMyRatings = async () => {
-    try {
-      const response = await api.get("/ratings/mine");
-      if (response.data.success) setMyRatings(response.data.ratings);
-    } catch (error) {
-      console.log("Failed to load my ratings:", error);
-    }
-  };
-
-  // ─── Lecturer: ratings received for them ────────────────────────────────────
-  // Uses /ratings/lecturer/:lecturerId but backend reads lecturerId from header
   const loadLecturerRatings = async () => {
     try {
       const response = await api.get("/ratings/lecturer/me");
@@ -197,28 +178,33 @@ export default function RatingScreen() {
   };
 
   const submitRating = async () => {
-    if (!selectedCourse) return Alert.alert("Select Course", "Please choose a course first.");
-    if (!rating) return Alert.alert("Rating Required", "Please select a star rating.");
+    if (!selectedCourse) {
+      Alert.alert("Select Course", "Please choose a course first.");
+      return;
+    }
+    if (!rating) {
+      Alert.alert("Rating Required", "Please select a star rating.");
+      return;
+    }
 
     setSubmitting(true);
     try {
       const response = await api.post("/ratings", {
-        lecturerId:   selectedCourse.lecturerId,
+        lecturerId: selectedCourse.lecturerId,
         lecturerName: selectedCourse.lecturerName,
-        courseName:   selectedCourse.courseName,
-        courseCode:   selectedCourse.courseCode,
-        classId:      selectedCourse.classId,
-        className:    selectedCourse.className,
+        courseName: selectedCourse.courseName,
+        courseCode: selectedCourse.courseCode,
+        classId: selectedCourse.classId,
+        className: selectedCourse.className,
         rating,
         comment: comment.trim(),
       });
 
       if (response.data.success) {
-        Alert.alert("Success", "Rating submitted successfully.");
+        Alert.alert("Success", "Rating submitted successfully. Thank you for your feedback!");
         setSelectedCourse(null);
         setRating(0);
         setComment("");
-        await loadMyRatings();
       }
     } catch (error) {
       Alert.alert("Error", error.response?.data?.error || "Failed to submit rating");
@@ -234,9 +220,7 @@ export default function RatingScreen() {
 
       if (userRole === "student") {
         await loadCourses();
-        await loadMyRatings();
       } else if (userRole === "lecturer") {
-        // ✅ Lecturer now loads their own received ratings — no more infinite spinner
         await loadLecturerRatings();
       } else if (userRole === "prl" || userRole === "pl") {
         await loadAllRatings();
@@ -255,12 +239,8 @@ export default function RatingScreen() {
     );
   }
 
-  // ─── STUDENT VIEW ────────────────────────────────────────────────────────────
+  // ─── STUDENT VIEW - ONLY SUBMIT, NO VIEWING ────────────────────────────────
   if (role === "student") {
-    const average = myRatings.length > 0
-      ? (myRatings.reduce((sum, r) => sum + r.rating, 0) / myRatings.length).toFixed(1)
-      : null;
-
     return (
       <SafeAreaView style={s.container}>
         <View style={s.header}>
@@ -275,7 +255,7 @@ export default function RatingScreen() {
           {courses.length === 0 ? (
             <EmptyState
               title="No Courses Yet"
-              subtitle="You haven't been assigned to any courses. Check back after your program leader assigns you to a class."
+              subtitle="You haven't been assigned to any courses. Contact your programme leader."
             />
           ) : (
             courses.map((item) => (
@@ -298,41 +278,35 @@ export default function RatingScreen() {
             </View>
           )}
 
-          <SectionLabel text="Your Rating" />
-          <View style={s.starCard}>
-            <StarPicker value={rating} onChange={setRating} />
-          </View>
-
-          <SectionLabel text="Comment (optional)" />
-          <TextInput
-            style={s.input}
-            multiline
-            numberOfLines={4}
-            placeholder="Share your feedback…"
-            placeholderTextColor={C.muted}
-            value={comment}
-            onChangeText={setComment}
-            textAlignVertical="top"
-          />
-
-          <TouchableOpacity
-            style={[s.submitBtn, (submitting || courses.length === 0) && { opacity: 0.5 }]}
-            onPress={submitRating}
-            disabled={submitting || courses.length === 0}
-            activeOpacity={0.85}
-          >
-            <Text style={s.submitText}>
-              {submitting ? "Submitting…" : "Submit Rating"}
-            </Text>
-          </TouchableOpacity>
-
-          {myRatings.length > 0 && (
+          {selectedCourse && (
             <>
-              <SectionLabel text="Your Previous Ratings" />
-              <AverageBlock average={average} count={myRatings.length} />
-              {myRatings.map((item) => (
-                <RatingCard key={item.id} item={item} showLecturer />
-              ))}
+              <SectionLabel text="Your Rating" />
+              <View style={s.starCard}>
+                <StarPicker value={rating} onChange={setRating} />
+              </View>
+
+              <SectionLabel text="Comment (optional)" />
+              <TextInput
+                style={s.input}
+                multiline
+                numberOfLines={4}
+                placeholder="Share your feedback…"
+                placeholderTextColor={C.muted}
+                value={comment}
+                onChangeText={setComment}
+                textAlignVertical="top"
+              />
+
+              <TouchableOpacity
+                style={[s.submitBtn, (submitting || courses.length === 0) && { opacity: 0.5 }]}
+                onPress={submitRating}
+                disabled={submitting || courses.length === 0}
+                activeOpacity={0.85}
+              >
+                <Text style={s.submitText}>
+                  {submitting ? "Submitting…" : "Submit Rating"}
+                </Text>
+              </TouchableOpacity>
             </>
           )}
         </ScrollView>
@@ -340,8 +314,7 @@ export default function RatingScreen() {
     );
   }
 
-  // ─── LECTURER VIEW ───────────────────────────────────────────────────────────
-  // ✅ Fixed — was missing entirely, causing infinite loading spinner
+  // ─── LECTURER VIEW - SEES THEIR OWN RATINGS ─────────────────────────────────
   if (role === "lecturer") {
     const average = lecturerRatingsList.length > 0
       ? (lecturerRatingsList.reduce((sum, r) => sum + r.rating, 0) / lecturerRatingsList.length).toFixed(1)
@@ -352,21 +325,21 @@ export default function RatingScreen() {
         <View style={s.header}>
           <Text style={s.eyebrow}>Lecturer Portal</Text>
           <Text style={s.headerTitle}>My Ratings</Text>
-          <Text style={s.headerSub}>Feedback submitted by your students</Text>
+          <Text style={s.headerSub}>Feedback from your students</Text>
         </View>
 
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {lecturerRatingsList.length === 0 ? (
             <EmptyState
               title="No Ratings Yet"
-              subtitle="Your students haven't submitted any feedback yet."
+              subtitle="When students rate you, their feedback will appear here."
             />
           ) : (
             <>
               <AverageBlock average={average} count={lecturerRatingsList.length} />
               <SectionLabel text="Student Feedback" />
               {lecturerRatingsList.map((item) => (
-                <RatingCard key={item.id} item={item} showLecturer={false} />
+                <RatingCard key={item.id} item={item} />
               ))}
             </>
           )}
@@ -375,15 +348,15 @@ export default function RatingScreen() {
     );
   }
 
-  // ─── PRL / PL VIEW ───────────────────────────────────────────────────────────
+  // ─── PRL / PL VIEW - SEES ALL RATINGS ───────────────────────────────────────
   if (role === "prl" || role === "pl") {
-    const totalRatings = ratings.length;
+    const totalRatings = allRatings.length;
     const averageRating = totalRatings > 0
-      ? (ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings).toFixed(1)
+      ? (allRatings.reduce((sum, r) => sum + r.rating, 0) / totalRatings).toFixed(1)
       : null;
 
     const lecturerMap = {};
-    ratings.forEach(r => {
+    allRatings.forEach(r => {
       if (!lecturerMap[r.lecturerId]) {
         lecturerMap[r.lecturerId] = { name: r.lecturerName, count: 0, total: 0 };
       }
@@ -430,11 +403,11 @@ export default function RatingScreen() {
           ))}
 
           <SectionLabel text="All Individual Ratings" />
-          {ratings.length === 0 ? (
+          {allRatings.length === 0 ? (
             <EmptyState title="No Ratings Yet" subtitle="No feedback has been submitted yet." />
           ) : (
-            ratings.map((item) => (
-              <RatingCard key={item.id} item={item} showLecturer />
+            allRatings.map((item) => (
+              <RatingCard key={item.id} item={item} />
             ))
           )}
         </ScrollView>
@@ -442,132 +415,212 @@ export default function RatingScreen() {
     );
   }
 
-  // Should never reach here — all roles are handled above
   return null;
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
-  centered:  { flex: 1, justifyContent: "center", alignItems: "center" },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   header: {
     backgroundColor: C.navy,
-    paddingTop: 52, paddingBottom: 24, paddingHorizontal: 24,
+    paddingTop: 52,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
   },
   eyebrow: {
-    fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
-    color: C.gold, textTransform: "uppercase", marginBottom: 6,
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
   headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
-  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)" },
+  headerSub: { fontSize: 13, color: "rgba(255,255,255,0.5)" },
 
   content: { padding: 16, paddingBottom: 40 },
 
   label: {
-    fontSize: 11, fontWeight: "600", letterSpacing: 1,
-    color: C.muted, textTransform: "uppercase", marginTop: 20, marginBottom: 10,
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1,
+    color: C.muted,
+    textTransform: "uppercase",
+    marginTop: 20,
+    marginBottom: 10,
   },
 
   emptyCard: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 28, alignItems: "center", marginBottom: 10,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 28,
+    alignItems: "center",
+    marginBottom: 10,
   },
-  emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
+  emptyTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
   emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
 
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
   statCard: {
-    flex: 1, backgroundColor: C.navy, borderRadius: 12, padding: 16, alignItems: "center",
+    flex: 1,
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
   },
   statNumber: { fontSize: 24, fontWeight: "700", color: C.white },
-  statLabel:  { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4 },
+  statLabel: { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4 },
 
   lecturerSummaryCard: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 16, marginBottom: 10,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
   },
-  lecturerName:  { fontSize: 16, fontWeight: "700", color: C.text, marginBottom: 8 },
+  lecturerName: { fontSize: 16, fontWeight: "700", color: C.text, marginBottom: 8 },
   lecturerStats: { flexDirection: "row", gap: 16 },
-  lecturerStat:  { fontSize: 13, color: C.muted },
+  lecturerStat: { fontSize: 13, color: C.muted },
 
   courseCard: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 16, flexDirection: "row", alignItems: "center", marginBottom: 10,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
   },
   courseCardSelected: { borderColor: C.navy, borderLeftWidth: 3, borderLeftColor: C.gold },
   courseTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6 },
   courseMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   codeBadge: {
-    backgroundColor: C.badge, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2,
+    backgroundColor: C.badge,
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
   codeBadgeText: { fontSize: 10, fontWeight: "600", color: C.navy, letterSpacing: 0.5 },
-  courseLecturer:{ fontSize: 12, color: C.muted },
+  courseLecturer: { fontSize: 12, color: C.muted },
   checkCircle: {
-    width: 22, height: 22, borderRadius: 11, backgroundColor: C.navy,
-    alignItems: "center", justifyContent: "center", marginLeft: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
   },
   checkMark: { color: C.white, fontSize: 11, fontWeight: "700" },
 
-  selectedSummary: { backgroundColor: C.navy, borderRadius: 12, padding: 16, marginTop: 16 },
+  selectedSummary: {
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+  },
   selectedSummaryLabel: {
-    fontSize: 10, fontWeight: "600", letterSpacing: 1,
-    color: C.gold, textTransform: "uppercase", marginBottom: 4,
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 4,
   },
   selectedSummaryTitle: { fontSize: 16, fontWeight: "700", color: C.white, marginBottom: 2 },
-  selectedSummaryMeta:  { fontSize: 13, color: "rgba(255,255,255,0.6)" },
+  selectedSummaryMeta: { fontSize: 13, color: "rgba(255,255,255,0.6)" },
 
   starCard: {
-    backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
-    borderColor: C.border, padding: 20, alignItems: "center", marginBottom: 4,
+    backgroundColor: C.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 4,
   },
-  starRow:    { flexDirection: "row", gap: 8 },
-  star:       { fontSize: 36, color: "#cfd6e4" },
+  starRow: { flexDirection: "row", gap: 8 },
+  star: { fontSize: 36, color: "#cfd6e4" },
   starActive: { color: C.gold },
 
   input: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 14, minHeight: 100, fontSize: 14, color: C.text,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 14,
+    minHeight: 100,
+    fontSize: 14,
+    color: C.text,
   },
 
   submitBtn: {
-    backgroundColor: C.navy, padding: 16, borderRadius: 12, marginTop: 20, alignItems: "center",
+    backgroundColor: C.navy,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    alignItems: "center",
   },
   submitText: { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
 
   ratingCard: {
-    backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
-    borderColor: C.border, padding: 16, marginBottom: 10,
+    backgroundColor: C.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    marginBottom: 10,
   },
   ratingTop: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 },
   avatar: {
-    width: 38, height: 38, borderRadius: 19, backgroundColor: C.badge,
-    alignItems: "center", justifyContent: "center",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: C.badge,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  avatarText:   { fontSize: 13, fontWeight: "600", color: C.navy },
-  studentName:  { fontSize: 14, fontWeight: "600", color: C.text },
-  ratingMeta:   { fontSize: 12, color: C.muted, marginTop: 2 },
+  avatarText: { fontSize: 13, fontWeight: "600", color: C.navy },
+  studentName: { fontSize: 14, fontWeight: "600", color: C.text },
+  ratingMeta: { fontSize: 12, color: C.muted, marginTop: 2 },
   ratingBadge: {
-    backgroundColor: C.bg, borderWidth: 1, borderColor: C.border,
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
-    flexDirection: "row", alignItems: "baseline", gap: 3,
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 3,
   },
-  ratingBadgeNum:  { fontSize: 18, fontWeight: "700", color: C.navy },
+  ratingBadgeNum: { fontSize: 18, fontWeight: "700", color: C.navy },
   ratingBadgeStar: { fontSize: 11, color: C.gold },
   miniStarRow: { flexDirection: "row", gap: 3, marginBottom: 8 },
-  miniStar:    { fontSize: 13 },
+  miniStar: { fontSize: 13 },
   miniStarLit: { color: C.gold },
   miniStarDim: { color: "#dde1ec" },
-  comment:  { fontSize: 13, color: C.text, lineHeight: 20, marginBottom: 6 },
+  comment: { fontSize: 13, color: C.text, lineHeight: 20, marginBottom: 6 },
   dateText: { fontSize: 11, color: C.muted },
 
   avgBlock: {
-    backgroundColor: C.navy, borderRadius: 12, padding: 20,
-    flexDirection: "row", alignItems: "center", gap: 20, marginBottom: 20,
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    marginBottom: 20,
   },
-  avgScore:   { fontSize: 54, fontWeight: "700", color: C.white, lineHeight: 58 },
+  avgScore: { fontSize: 54, fontWeight: "700", color: C.white, lineHeight: 58 },
   avgStarRow: { flexDirection: "row", gap: 4 },
-  avgStar:    { fontSize: 16 },
+  avgStar: { fontSize: 16 },
   avgStarLit: { color: C.gold },
   avgStarDim: { color: "rgba(255,255,255,0.2)" },
-  avgCount:   { fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 },
+  avgCount: { fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 },
 });

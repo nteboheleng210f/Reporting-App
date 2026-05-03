@@ -16,7 +16,6 @@ const submitRating = async (req, res) => {
       });
     }
 
-    // Get student name and class info
     let studentName = 'Student';
     let verifiedClassId = classId || '';
     let verifiedClassName = className || '';
@@ -31,7 +30,6 @@ const submitRating = async (req, res) => {
       }
     }
 
-    // FIX: Verify the course exists and get the CORRECT lecturer ID
     let finalLecturerId = lecturerId;
     let finalLecturerName = lecturerName;
     
@@ -44,7 +42,6 @@ const submitRating = async (req, res) => {
 
       if (!courseSnap.empty) {
         const courseData = courseSnap.docs[0].data();
-        // Use the lecturer ID from the course document
         finalLecturerId = courseData.lecturerId;
         finalLecturerName = courseData.lecturerName || lecturerName;
       } else {
@@ -58,7 +55,7 @@ const submitRating = async (req, res) => {
     const ratingData = {
       studentId: studentId || 'unknown',
       studentName,
-      lecturerId: finalLecturerId,  // FIXED: Correct lecturer ID
+      lecturerId: finalLecturerId,
       lecturerName: finalLecturerName,
       courseName: courseName || '',
       courseCode: courseCode || '',
@@ -99,18 +96,21 @@ const getAllRatings = async (req, res) => {
 const getMyRatings = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
-    if (!studentId) return res.json({ success: true, ratings: [] });
+    
+    if (!studentId) {
+      return res.json({ success: true, ratings: [] });
+    }
 
     const snapshot = await db.collection('ratings')
       .where('studentId', '==', studentId)
-      .orderBy('createdAt', 'desc')
       .get();
 
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, ratings });
+    
   } catch (error) {
     console.error('getMyRatings error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, ratings: [] });
   }
 };
 
@@ -118,13 +118,19 @@ const getStudentCourses = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
 
-    if (!studentId) return res.json({ success: true, courses: [] });
+    if (!studentId) {
+      return res.json({ success: true, courses: [] });
+    }
 
     const userDoc = await db.collection('users').doc(studentId).get();
-    if (!userDoc.exists) return res.json({ success: true, courses: [] });
+    if (!userDoc.exists) {
+      return res.json({ success: true, courses: [] });
+    }
 
     const classId = userDoc.data()?.classId;
-    if (!classId) return res.json({ success: true, courses: [] });
+    if (!classId) {
+      return res.json({ success: true, courses: [] });
+    }
 
     const snapshot = await db.collection('courses')
       .where('classId', '==', classId)
@@ -132,17 +138,16 @@ const getStudentCourses = async (req, res) => {
 
     const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, courses });
+    
   } catch (error) {
     console.error('getStudentCourses error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, courses: [] });
   }
 };
 
-// FIXED: This ensures lecturers see ratings from students
 const getLecturerRatings = async (req, res) => {
   try {
     const lecturerId = req.headers['x-user-id'];
-    console.log("Lecturer ID from header:", lecturerId); // Debug log
     
     if (!lecturerId) {
       return res.json({ success: true, ratings: [] });
@@ -150,16 +155,15 @@ const getLecturerRatings = async (req, res) => {
 
     const snapshot = await db.collection('ratings')
       .where('lecturerId', '==', lecturerId)
-      .orderBy('createdAt', 'desc')
       .get();
 
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    console.log(`Found ${ratings.length} ratings for lecturer ${lecturerId}`); // Debug log
     
     res.json({ success: true, ratings });
+    
   } catch (error) {
     console.error('getLecturerRatings error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, ratings: [] });
   }
 };
 
@@ -167,12 +171,10 @@ const hasRated = async (req, res) => {
   res.json({ success: true, hasRated: false });
 };
 
-// Debug endpoint to check all ratings in database
 const debugAllRatings = async (req, res) => {
   try {
     const snapshot = await db.collection('ratings').get();
     const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    console.log("ALL RATINGS IN DATABASE:", JSON.stringify(ratings, null, 2));
     res.json({ success: true, ratings, count: ratings.length });
   } catch (error) {
     res.status(500).json({ error: error.message });
