@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage"; // ✅ was missing
 import api from "../../services/api";
 
 const C = {
@@ -41,13 +42,21 @@ function NavCard({ title, subtitle, route, navigation }) {
 
 export default function PRLDashboard({ navigation }) {
   const [statsLoading, setStatsLoading] = useState(true);
-  const [userName, setUserName] = useState("");
-  const [stats, setStats] = useState({
+  const [userName, setUserName]         = useState("");
+  const [stats, setStats]               = useState({
     courses: 0,
     lecturers: 0,
     pendingReports: 0,
     reviewedReports: 0,
   });
+
+  const getUserName = async () => {
+    const userData = await AsyncStorage.getItem("user_data");
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserName(user.username || user.email || "PRL");
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -57,17 +66,8 @@ export default function PRLDashboard({ navigation }) {
       }
     } catch (error) {
       console.log("Error fetching stats:", error);
-      Alert.alert("Error", error.response?.data?.error || "Failed to load stats");
     } finally {
       setStatsLoading(false);
-    }
-  };
-
-  const getUserName = async () => {
-    const userData = await AsyncStorage.getItem("user_data");
-    if (userData) {
-      const user = JSON.parse(userData);
-      setUserName(user.username || user.email || "PRL");
     }
   };
 
@@ -101,7 +101,7 @@ export default function PRLDashboard({ navigation }) {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={s.header}>
           <Text style={s.eyebrow}>Principal Lecturer</Text>
-          <Text style={s.headerTitle}>{userName}</Text>
+          <Text style={s.headerTitle}>{userName || "PRL"}</Text>
           <Text style={s.headerSub}>Supervisor Dashboard</Text>
 
           <View style={s.statStrip}>
@@ -160,7 +160,7 @@ export default function PRLDashboard({ navigation }) {
             onPress={logout}
             activeOpacity={0.8}
           >
-            <Text style={s.logoutText}>LogOut</Text>
+            <Text style={s.logoutText}>Sign Out</Text>
             <Text style={s.logoutArrow}>›</Text>
           </TouchableOpacity>
         </View>
@@ -178,11 +178,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     backgroundColor: C.bg,
   },
-  loadingText: {
-    color: C.muted,
-    fontSize: 14,
-    marginTop: 10,
-  },
+  loadingText: { color: C.muted, fontSize: 14, marginTop: 10 },
 
   header: {
     backgroundColor: C.navy,
@@ -191,24 +187,11 @@ const s = StyleSheet.create({
     paddingBottom: 0,
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.2,
-    color: C.gold,
-    textTransform: "uppercase",
-    marginBottom: 6,
+    fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
+    color: C.gold, textTransform: "uppercase", marginBottom: 6,
   },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: C.white,
-    marginBottom: 4,
-  },
-  headerSub: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.5)",
-    marginBottom: 28,
-  },
+  headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
+  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 28 },
 
   statStrip: {
     flexDirection: "row",
@@ -216,88 +199,38 @@ const s = StyleSheet.create({
     borderTopColor: "rgba(255,255,255,0.1)",
     paddingVertical: 16,
   },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statNum: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: C.white,
-    marginBottom: 2,
-  },
-  statMeta: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.4)",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginVertical: 4,
-  },
+  statItem:    { flex: 1, alignItems: "center" },
+  statNum:     { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
+  statMeta:    { fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
+  statDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 4 },
 
-  body: {
-    padding: 16,
-    paddingBottom: 48,
-  },
+  body: { padding: 16, paddingBottom: 48 },
 
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1,
-    color: C.muted,
-    textTransform: "uppercase",
-    marginBottom: 10,
-    marginTop: 4,
+    fontSize: 11, fontWeight: "600", letterSpacing: 1,
+    color: C.muted, textTransform: "uppercase", marginBottom: 10, marginTop: 4,
   },
 
   navCard: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 12, padding: 16, marginBottom: 8,
+    flexDirection: "row", alignItems: "center",
   },
-  navCardBody: { flex: 1 },
-  navCardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: 3,
-  },
-  navCardSub: {
-    fontSize: 12,
-    color: C.muted,
-  },
-  navArrow: {
-    fontSize: 22,
-    color: C.muted,
-    marginLeft: 8,
-  },
+  navCardBody:  { flex: 1 },
+  navCardTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 3 },
+  navCardSub:   { fontSize: 12, color: C.muted },
+  navArrow:     { fontSize: 22, color: C.muted, marginLeft: 8 },
 
   logoutBtn: {
     backgroundColor: C.navy,
     borderRadius: 12,
     padding: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     marginTop: 4,
     marginBottom: 16,
   },
-  logoutText: {
-   color: C.white,
-    fontWeight: "700",
-    fontSize: 14,
-    letterSpacing: 0.4,
-
-
-  },
-  logoutArrow: {
-    fontSize: 22,
-    color: "#f5f2f2",
-  },
+  logoutText:  { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
+  logoutArrow: { fontSize: 22, color: "#f5f2f2" },
 });

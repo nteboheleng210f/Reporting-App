@@ -288,23 +288,23 @@ const s = StyleSheet.create({
   },
 
   logoutBtn: {
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  logoutText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#dc2626",
-  },
-  logoutArrow: {
-    fontSize: 22,
-    color: "#dc2626",
-  },
+  backgroundColor: C.navy,
+  borderRadius: 12,
+  padding: 16,
+  marginTop: 4,
+  marginBottom: 16,
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+},
+logoutText: {
+  color: C.white,
+  fontWeight: "700",
+  fontSize: 14,
+  letterSpacing: 0.4,
+},
+logoutArrow: {
+  fontSize: 22,
+  color: "#f3eeee",
+},
 });
