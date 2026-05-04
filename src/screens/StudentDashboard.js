@@ -75,7 +75,7 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  // ✅ Fixed: was /dashboard/student → now /student/stats
+
   const fetchStats = async () => {
     try {
       const response = await api.get("/student/stats");
@@ -91,7 +91,6 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  // ✅ Fixed: was /dashboard/student/upcoming-class → now /student/upcoming-class
   const fetchUpcomingClass = async () => {
     try {
       const response = await api.get("/student/upcoming-class");
