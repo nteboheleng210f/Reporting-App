@@ -47,11 +47,8 @@ function NavCard({ title, subtitle, route, navigation }) {
 function EmptyClassCard() {
   return (
     <View style={s.emptyCard}>
-      <Text style={s.emptyIcon}>📋</Text>
+      <Text style={s.emptyIcon}></Text>
       <Text style={s.emptyTitle}>Not Assigned Yet</Text>
-      <Text style={s.emptySubtitle}>
-        Your program leader hasn't assigned you to a class yet. Check back soon.
-      </Text>
     </View>
   );
 }
@@ -75,7 +72,7 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  // ✅ Fixed: was /dashboard/student → now /student/stats
+  
   const fetchStats = async () => {
     try {
       const response = await api.get("/student/stats");
@@ -91,7 +88,6 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  // ✅ Fixed: was /dashboard/student/upcoming-class → now /student/upcoming-class
   const fetchUpcomingClass = async () => {
     try {
       const response = await api.get("/student/upcoming-class");
