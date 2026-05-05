@@ -72,7 +72,6 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  
   const fetchStats = async () => {
     try {
       const response = await api.get("/student/stats");
