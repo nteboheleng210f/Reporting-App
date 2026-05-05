@@ -128,7 +128,6 @@ const getReviewedReports = async (req, res) => {
   }
 };
 
-// ─── Export to Excel ──────────────────────────────────────────────────────────
 const exportReportsToExcel = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
@@ -188,12 +187,133 @@ const exportReportsToExcel = async (req, res) => {
   }
 };
 
+// ─── Get reports with pagination (for PL and PRL) ───────────────────────────
+const getReportsPaginated = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const startAfter = req.query.startAfter || null;
+    
+    let query = db.collection('lectureReports').orderBy('createdAt', 'desc');
+    
+    // If we have a cursor, start after that document
+    if (startAfter) {
+      const lastDoc = await db.collection('lectureReports').doc(startAfter).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+    
+    const snapshot = await query.limit(limit).get();
+    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Get total count
+    const totalSnapshot = await db.collection('lectureReports').count().get();
+    const total = totalSnapshot.data().count;
+    
+    // Get next cursor
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+    const nextCursor = lastVisible ? lastVisible.id : null;
+    
+    res.json({
+      success: true,
+      reports,
+      pagination: {
+        currentPage: page,
+        limit,
+        total,
+        hasMore: reports.length === limit,
+        nextCursor
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const getPendingReportsPaginated = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const startAfter = req.query.startAfter || null;
+    
+    let query = db.collection('lectureReports')
+      .where('status', '==', 'pending')
+      .orderBy('createdAt', 'desc');
+    
+    if (startAfter) {
+      const lastDoc = await db.collection('lectureReports').doc(startAfter).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+    
+    const snapshot = await query.limit(limit).get();
+    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+    const nextCursor = lastVisible ? lastVisible.id : null;
+    
+    res.json({
+      success: true,
+      reports,
+      hasMore: reports.length === limit,
+      nextCursor
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const submitStructuredFeedback = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const { 
+      feedback,
+      rating,
+      requiresRevision,
+      revisionNotes,
+      strengths,
+      improvements
+    } = req.body;
+
+    if (!feedback) {
+      return res.status(400).json({ success: false, error: 'Feedback is required' });
+    }
+
+    const updateData = {
+      prlFeedback: feedback,
+      prlRating: rating || null,
+      requiresRevision: requiresRevision || false,
+      revisionNotes: revisionNotes || '',
+      strengths: strengths || '',
+      improvements: improvements || '',
+      status: requiresRevision ? 'revision_needed' : 'reviewed',
+      reviewedAt: new Date().toISOString(),
+      reviewedBy: req.user?.uid || 'prl'
+    };
+
+    await db.collection('lectureReports').doc(reportId).update(updateData);
+
+    res.json({ 
+      success: true, 
+      message: requiresRevision ? 'Report marked for revision' : 'Feedback submitted successfully' 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
 module.exports = {
   createReport,
   getReports,
   getMyReports,
+  getReportsPaginated,        
+  getPendingReportsPaginated, 
   updateReportFeedback,
   getPendingReports,
   getReviewedReports,
-  exportReportsToExcel
+  exportReportsToExcel,
+  submitStructuredFeedback   
 };
