@@ -16,21 +16,15 @@ import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
 import api from "../services/api";
-import StructuredFeedbackModal from "../components/StructuredFeedbackModal";
 
 export default function ReportsScreen() {
   const [role, setRole] = useState(null);
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [selectedReportForFeedback, setSelectedReportForFeedback] = useState(null);
-  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [nextCursor, setNextCursor] = useState(null);
+  const [feedbackMap, setFeedbackMap] = useState({});
 
   // Search states
   const [searchQuery, setSearchQuery] = useState("");
@@ -130,37 +124,18 @@ export default function ReportsScreen() {
     setShowFilters(false);
   };
 
-  // Load pending reports with pagination (PRL)
-  const loadPendingReportsPaginated = async (isLoadMore = false) => {
-    if (isLoadMore && (!hasMore || loadingMore)) return;
-
-    if (isLoadMore) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
-
+  // Load pending reports (PRL)
+  const loadPendingReports = async () => {
+    setLoading(true);
     try {
-      let url = `/reports/pending/paginated?limit=10`;
-      if (nextCursor && isLoadMore) {
-        url = `/reports/pending/paginated?limit=10&startAfter=${nextCursor}`;
-      }
-
-      const response = await api.get(url);
+      const response = await api.get("/reports/pending");
       if (response.data.success) {
-        if (isLoadMore) {
-          setReports((prev) => [...prev, ...response.data.reports]);
-        } else {
-          setReports(response.data.reports);
-        }
-        setHasMore(response.data.hasMore);
-        setNextCursor(response.data.nextCursor);
+        setReports(response.data.reports);
       }
     } catch (error) {
       Alert.alert("Error", "Failed to load reports");
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   };
 
@@ -189,6 +164,26 @@ export default function ReportsScreen() {
       Alert.alert("Error", error.response?.data?.error || "Failed to load reports");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Submit feedback (PRL)
+  const submitFeedback = async (id) => {
+    const feedback = feedbackMap[id];
+    if (!feedback || !feedback.trim()) {
+      Alert.alert("Error", "Please enter feedback");
+      return;
+    }
+
+    try {
+      const response = await api.put(`/reports/${id}/feedback`, { prlFeedback: feedback });
+      if (response.data.success) {
+        Alert.alert("Success", "Feedback saved");
+        setFeedbackMap(prev => ({ ...prev, [id]: "" }));
+        await loadPendingReports();
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to submit feedback");
     }
   };
 
@@ -291,30 +286,6 @@ export default function ReportsScreen() {
     }
   };
 
-  // Submit structured feedback
-  const handleStructuredFeedback = async (feedbackData) => {
-    if (!selectedReportForFeedback) return;
-
-    setSubmittingFeedback(true);
-    try {
-      const response = await api.post(
-        `/reports/${selectedReportForFeedback.id}/structured-feedback`,
-        feedbackData
-      );
-
-      if (response.data.success) {
-        Alert.alert("Success", response.data.message);
-        setShowFeedbackModal(false);
-        setSelectedReportForFeedback(null);
-        await loadPendingReportsPaginated();
-      }
-    } catch (error) {
-      Alert.alert("Error", error.response?.data?.error || "Failed to submit feedback");
-    } finally {
-      setSubmittingFeedback(false);
-    }
-  };
-
   // Report Details Component
   const ReportDetails = ({ report, onClose }) => (
     <ScrollView style={styles.fullView}>
@@ -372,7 +343,7 @@ export default function ReportsScreen() {
     </ScrollView>
   );
 
-  // Filter Modal (without Picker)
+  // Filter Modal
   const FilterModal = () => (
     <Modal visible={showFilters} transparent={true} animationType="slide">
       <View style={styles.modalOverlay}>
@@ -504,7 +475,7 @@ export default function ReportsScreen() {
       await loadFilterOptions();
 
       if (userRole === "prl") {
-        await loadPendingReportsPaginated();
+        await loadPendingReports();
       } else if (userRole === "pl") {
         await loadReviewedReports();
       } else if (userRole === "lecturer") {
@@ -538,16 +509,6 @@ export default function ReportsScreen() {
       <View style={styles.container}>
         <ExportModal />
         <FilterModal />
-        <StructuredFeedbackModal
-          visible={showFeedbackModal}
-          report={selectedReportForFeedback}
-          onClose={() => {
-            setShowFeedbackModal(false);
-            setSelectedReportForFeedback(null);
-          }}
-          onSubmit={handleStructuredFeedback}
-          submitting={submittingFeedback}
-        />
 
         <View style={styles.headerRow}>
           <Text style={styles.title}>📊 PRL Review Dashboard</Text>
@@ -595,14 +556,19 @@ export default function ReportsScreen() {
                 </Text>
               </TouchableOpacity>
 
+              <TextInput
+                style={styles.input}
+                placeholder="Enter PRL feedback..."
+                placeholderTextColor="#94a3b8"
+                value={feedbackMap[item.id] || ""}
+                onChangeText={(t) => setFeedbackMap(prev => ({ ...prev, [item.id]: t }))}
+              />
+
               <TouchableOpacity
                 style={styles.btn}
-                onPress={() => {
-                  setSelectedReportForFeedback(item);
-                  setShowFeedbackModal(true);
-                }}
+                onPress={() => submitFeedback(item.id)}
               >
-                <Text style={styles.btnText}>Give Structured Feedback</Text>
+                <Text style={styles.btnText}>Submit Feedback</Text>
               </TouchableOpacity>
 
               {item.prlFeedback && (
@@ -610,9 +576,6 @@ export default function ReportsScreen() {
               )}
             </View>
           )}
-          onEndReached={() => loadPendingReportsPaginated(true)}
-          onEndReachedThreshold={0.3}
-          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 20 }} /> : null}
           ListEmptyComponent={<Text style={styles.emptyText}>No pending reports found.</Text>}
         />
       </View>
@@ -831,6 +794,13 @@ const styles = StyleSheet.create({
   statusReviewed: {
     color: "#4ade80",
   },
+  input: {
+    backgroundColor: "#1e293b",
+    color: "white",
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
   btn: {
     backgroundColor: "#2563eb",
     padding: 10,
@@ -853,7 +823,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 20,
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
@@ -911,7 +880,6 @@ const styles = StyleSheet.create({
   cancelBtnText: {
     color: "white",
   },
-  // Filter Modal
   filterModal: {
     backgroundColor: "#1e293b",
     borderRadius: 16,
@@ -966,7 +934,6 @@ const styles = StyleSheet.create({
   applyFilterText: {
     color: "white",
   },
-  // Full Report View
   fullView: {
     flex: 1,
     backgroundColor: "#0b1220",
