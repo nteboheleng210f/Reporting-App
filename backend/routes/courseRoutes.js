@@ -7,16 +7,20 @@ const {
   getLecturerCourses,
   getCourseById,
   createCourse,
+  deleteCourse,
+  updateCourseLecturer,
   getClasses,
   getLecturers,
 } = require('../controllers/courseController');
 
-router.get('/student',     getStudentCourses);
-router.get('/mine',        getLecturerCourses);
-router.get('/classes',     getClasses);
-router.get('/lecturers',   getLecturers);
-router.get('/',            getCourses);
-router.get('/:courseId',   getCourseById);
-router.post('/',           createCourse);
+router.get('/student',                        getStudentCourses);
+router.get('/mine',                           getLecturerCourses);
+router.get('/classes',                        getClasses);
+router.get('/lecturers',                      getLecturers);
+router.get('/',                               getCourses);
+router.get('/:courseId',                      getCourseById);
+router.post('/',                              createCourse);
+router.delete('/:courseId',                   deleteCourse);          // ← new
+router.patch('/:courseId/lecturer',           updateCourseLecturer);  // ← new
 
 module.exports = router;

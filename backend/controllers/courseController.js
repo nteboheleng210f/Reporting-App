@@ -16,15 +16,12 @@ const getCourses = async (req, res) => {
 const getStudentCourses = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
-
     if (!studentId) return res.json({ success: true, courses: [] });
 
     const userDoc = await db.collection('users').doc(studentId).get();
     if (!userDoc.exists) return res.json({ success: true, courses: [] });
 
     const classId = userDoc.data()?.classId;
-
-    
     if (!classId) return res.json({ success: true, courses: [] });
 
     const snapshot = await db.collection('courses')
@@ -43,7 +40,6 @@ const getStudentCourses = async (req, res) => {
 const getLecturerCourses = async (req, res) => {
   try {
     const lecturerId = req.headers['x-user-id'];
-
     if (!lecturerId) return res.json({ success: true, courses: [] });
 
     const snap = await db.collection('courses')
@@ -63,11 +59,9 @@ const getCourseById = async (req, res) => {
   try {
     const { courseId } = req.params;
     const docSnap = await db.collection('courses').doc(courseId).get();
-
     if (!docSnap.exists) {
       return res.status(404).json({ success: false, error: 'Course not found' });
     }
-
     res.json({ success: true, course: { id: docSnap.id, ...docSnap.data() } });
   } catch (error) {
     console.error('getCourseById error:', error);
@@ -105,7 +99,6 @@ const createCourse = async (req, res) => {
     };
 
     const docRef = await db.collection('courses').add(courseData);
-
     res.status(201).json({
       success: true,
       message: 'Course created successfully',
@@ -113,6 +106,49 @@ const createCourse = async (req, res) => {
     });
   } catch (error) {
     console.error('createCourse error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+// ── NEW: Delete a course ──────────────────────────────────────────────────────
+const deleteCourse = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const docSnap = await db.collection('courses').doc(courseId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: 'Course not found' });
+    }
+    await db.collection('courses').doc(courseId).delete();
+    res.json({ success: true, message: 'Course deleted successfully' });
+  } catch (error) {
+    console.error('deleteCourse error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+// ── NEW: Reassign or remove lecturer from a course ────────────────────────────
+// Send lecturerId: "" and lecturerName: "" to fully unassign
+const updateCourseLecturer = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { lecturerId, lecturerName } = req.body;
+
+    const docSnap = await db.collection('courses').doc(courseId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: 'Course not found' });
+    }
+
+    await db.collection('courses').doc(courseId).update({
+      lecturerId:   lecturerId   || '',
+      lecturerName: lecturerName || '',
+      updatedAt:    new Date().toISOString(),
+    });
+
+    res.json({ success: true, message: 'Lecturer updated successfully' });
+  } catch (error) {
+    console.error('updateCourseLecturer error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -135,7 +171,6 @@ const getLecturers = async (req, res) => {
     const snapshot = await db.collection('users')
       .where('role', '==', 'lecturer')
       .get();
-
     const lecturers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, lecturers });
   } catch (error) {
@@ -144,12 +179,15 @@ const getLecturers = async (req, res) => {
   }
 };
 
+
 module.exports = {
-  getCourses,         
-  getStudentCourses,   
-  getLecturerCourses,  
+  getCourses,
+  getStudentCourses,
+  getLecturerCourses,
   getCourseById,
   createCourse,
+  deleteCourse,          // ← new
+  updateCourseLecturer,  // ← new
   getClasses,
   getLecturers,
 };

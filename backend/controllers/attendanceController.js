@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
 
-// ─── Student: own attendance only ─────────────────────────────────────────────
+
 const getStudentAttendance = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
@@ -21,7 +21,6 @@ const getStudentAttendance = async (req, res) => {
   }
 };
 
-// ─── Lecturer: students in a course's class only ──────────────────────────────
 const getCourseStudents = async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -52,7 +51,7 @@ const getCourseStudents = async (req, res) => {
   }
 };
 
-// ─── Lecturer: mark attendance — with duplicate prevention ───────────────────
+
 const markAttendance = async (req, res) => {
   try {
     const { attendance, courseId } = req.body;
@@ -62,32 +61,46 @@ const markAttendance = async (req, res) => {
       return res.status(400).json({ success: false, error: 'No attendance data provided' });
     }
 
+    if (!courseId) {
+      return res.status(400).json({ success: false, error: 'courseId is required' });
+    }
+
     const timestamp = new Date().toISOString();
     const date      = timestamp.split('T')[0];
 
-    // ✅ Check for existing attendance for this course on today's date
+    //  Fetch all existing records for this course today in one query
     const existingSnap = await db.collection('attendance')
       .where('courseId', '==', courseId)
       .where('date', '==', date)
       .get();
 
-    if (!existingSnap.empty) {
+
+    const alreadyMarked = new Set(
+      existingSnap.docs.map(doc => doc.data().studentId)
+    );
+
+    
+    const toMark  = attendance.filter(r => !alreadyMarked.has(r.studentId));
+    const skipped = attendance.filter(r =>  alreadyMarked.has(r.studentId));
+
+  
+    if (toMark.length === 0) {
       return res.status(400).json({
         success: false,
-        error: `Attendance for this course has already been marked today (${date}). Each course can only be marked once per day.`
+        error: `Attendance has already been marked for all students in this course today (${date}).`
       });
     }
 
+  
     const batch = db.batch();
-
-    for (const record of attendance) {
+    for (const record of toMark) {
       const docRef = db.collection('attendance').doc();
       batch.set(docRef, {
         studentId:   record.studentId,
         studentName: record.studentName,
-        courseId:    record.courseId,
-        courseName:  record.courseName,
-        classId:     record.classId || '',
+        courseId:    record.courseId || courseId,
+        courseName:  record.courseName || '',
+        classId:     record.classId   || '',
         status:      record.status,
         date,
         timestamp,
@@ -99,7 +112,13 @@ const markAttendance = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Attendance marked for ${attendance.length} students`
+      message: `Attendance marked for ${toMark.length} student${toMark.length !== 1 ? 's' : ''}.${
+        skipped.length > 0
+          ? ` ${skipped.length} student${skipped.length !== 1 ? 's were' : ' was'} already marked and skipped.`
+          : ''
+      }`,
+      marked:  toMark.length,
+      skipped: skipped.length,
     });
   } catch (error) {
     console.error('markAttendance error:', error);
