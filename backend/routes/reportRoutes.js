@@ -12,9 +12,9 @@ const {
   exportReportsToExcel,
   submitStructuredFeedback    
 } = require('../controllers/reportController');
-//const { getUserFromHeader, checkRole } = require('../middleware/auth');
+const { getUserFromHeader, checkRole } = require('../middleware/auth');
 
-//router.use(getUserFromHeader);
+router.use(getUserFromHeader);
 
 
 router.get('/paginated', checkRole(['pl', 'prl']), getReportsPaginated);
