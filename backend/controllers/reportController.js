@@ -1,5 +1,6 @@
 const { db } = require('../config/firebase');
 const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
 
 // ─── Submit report — lecturer only ───────────────────────────────────────────
 const createReport = async (req, res) => {
@@ -233,230 +234,56 @@ const exportReportsToExcel = async (req, res) => {
   }
 };
 
-// ─── Export reports to HTML/PDF (printable format) ───────────────────────────
+// ─── Export reports to PURE PDF using PDFKit ──────────────────────────────────
 const exportReportsToPDF = async (req, res) => {
   try {
-    console.log('Starting HTML export...');
+    console.log('Starting PDF generation...');
     
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
     const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     console.log(`Found ${reports.length} reports to export`);
 
-    // Simple HTML template
-    let htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Lecture Reports Export</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Helvetica', 'Arial', sans-serif;
-            margin: 20px;
-            color: #333;
-            background: white;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: #2563eb;
-            text-align: center;
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 3px solid #2563eb;
-        }
-        .subtitle {
-            color: #666;
-            font-size: 14px;
-        }
-        .date {
-            text-align: center;
-            color: #666;
-            font-size: 12px;
-            margin-bottom: 30px;
-        }
-        .summary {
-            background: #f0f9ff;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border-left: 4px solid #2563eb;
-        }
-        .summary h2 {
-            color: #2563eb;
-            font-size: 18px;
-            margin-bottom: 15px;
-        }
-        .summary-grid {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .stat-card {
-            flex: 1;
-            min-width: 150px;
-            padding: 15px;
-            background: white;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .stat-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        .stat-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #2563eb;
-        }
-        .reports-section {
-            margin-top: 30px;
-        }
-        .reports-section h2 {
-            color: #2563eb;
-            font-size: 20px;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e5e7eb;
-        }
-        .report-card {
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            page-break-inside: avoid;
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .report-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2563eb;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e5e7eb;
-        }
-        .info-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        .info-item {
-            flex: 1;
-            min-width: 200px;
-        }
-        .info-label {
-            font-weight: bold;
-            color: #4b5563;
-            font-size: 12px;
-            margin-bottom: 5px;
-        }
-        .info-value {
-            color: #1f2937;
-            font-size: 14px;
-        }
-        .status {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .status-pending {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .status-reviewed {
-            background: #d1fae5;
-            color: #059669;
-        }
-        .status-needs_revision {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-        .feedback-box {
-            margin-top: 15px;
-            padding: 12px;
-            background: #f3f4f6;
-            border-radius: 6px;
-            border-left: 3px solid #2563eb;
-        }
-        .feedback-title {
-            font-weight: bold;
-            color: #2563eb;
-            margin-bottom: 8px;
-            font-size: 13px;
-        }
-        .feedback-text {
-            color: #374151;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        .attendance-bar {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 5px;
-        }
-        .attendance-progress {
-            flex: 1;
-            height: 8px;
-            background: #e5e7eb;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        .attendance-fill {
-            height: 100%;
-            background: #10b981;
-            border-radius: 4px;
-        }
-        .footer {
-            margin-top: 40px;
-            text-align: center;
-            font-size: 11px;
-            color: #9ca3af;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 20px;
-        }
-        @media print {
-            body {
-                margin: 0;
-                padding: 10px;
-            }
-            .report-card {
-                break-inside: avoid;
-                page-break-inside: avoid;
-            }
-            .export-btn {
-                display: none;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>📊 Lecture Reports Export</h1>
-            <div class="subtitle">Academic Performance Reports</div>
-        </div>
-        <div class="date">
-            Generated: ${new Date().toLocaleString()}
-        </div>`;
-
+    // Create a new PDF document
+    const doc = new PDFDocument({ 
+      margin: 50,
+      size: 'A4',
+      layout: 'portrait'
+    });
+    
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.pdf');
+    
+    // Pipe PDF to response
+    doc.pipe(res);
+    
+    // Add header
+    doc.fontSize(25)
+       .font('Helvetica-Bold')
+       .fillColor('#2563eb')
+       .text('Lecture Reports', { align: 'center' })
+       .moveDown(0.5);
+    
+    doc.fontSize(12)
+       .font('Helvetica')
+       .fillColor('#666666')
+       .text('Academic Performance Reports', { align: 'center' })
+       .moveDown(0.5);
+    
+    doc.fontSize(10)
+       .fillColor('#999999')
+       .text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' })
+       .moveDown(1);
+    
+    // Add horizontal line
+    doc.strokeColor('#2563eb')
+       .lineWidth(2)
+       .moveTo(50, doc.y)
+       .lineTo(550, doc.y)
+       .stroke()
+       .moveDown(1);
+    
     // Calculate statistics
     const totalReports = reports.length;
     const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
@@ -465,180 +292,228 @@ const exportReportsToPDF = async (req, res) => {
     const totalAttendance = reports.reduce((sum, r) => sum + (r.actualPresent || 0), 0);
     const totalStudents = reports.reduce((sum, r) => sum + (r.totalRegistered || 0), 0);
     const avgAttendance = totalStudents > 0 ? ((totalAttendance / totalStudents) * 100).toFixed(1) : 0;
-
-    htmlContent += `
-        <div class="summary">
-            <h2>📈 Summary Statistics</h2>
-            <div class="summary-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Total Reports</div>
-                    <div class="stat-value">${totalReports}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Reviewed</div>
-                    <div class="stat-value" style="color: #10b981;">${reviewedReports}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Pending</div>
-                    <div class="stat-value" style="color: #f59e0b;">${pendingReports}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Need Revision</div>
-                    <div class="stat-value" style="color: #ef4444;">${needsRevisionReports}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Avg Attendance</div>
-                    <div class="stat-value">${avgAttendance}%</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="reports-section">
-            <h2>📋 Detailed Reports</h2>`;
-
-    // Add each report
+    
+    // Summary section
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .fillColor('#2563eb')
+       .text('Summary Statistics', { underline: true })
+       .moveDown(0.5);
+    
+    doc.fontSize(11)
+       .font('Helvetica')
+       .fillColor('#333333');
+    
+    // Create a table for statistics
+    const startY = doc.y;
+    let currentY = startY;
+    
+    doc.text(`Total Reports: ${totalReports}`, 50, currentY);
+    doc.text(`Reviewed Reports: ${reviewedReports}`, 250, currentY);
+    doc.text(`Pending Reports: ${pendingReports}`, 450, currentY);
+    currentY += 20;
+    
+    doc.text(`Need Revision: ${needsRevisionReports}`, 50, currentY);
+    doc.text(`Average Attendance: ${avgAttendance}%`, 250, currentY);
+    currentY += 30;
+    
+    doc.moveDown(1);
+    
+    // Detailed Reports Section
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .fillColor('#2563eb')
+       .text('Detailed Reports', { underline: true })
+       .moveDown(0.5);
+    
+    // Loop through each report
     reports.forEach((report, index) => {
-      const statusClass = `status-${report.status || 'pending'}`;
-      const statusText = report.status === 'reviewed' ? 'Reviewed' : 
-                        report.status === 'needs_revision' ? 'Needs Revision' : 'Pending';
+      // Check if we need a new page
+      if (doc.y > 700) {
+        doc.addPage();
+      }
       
-      const attendancePercentage = report.totalRegistered > 0 
-        ? ((report.actualPresent / report.totalRegistered) * 100).toFixed(1) 
+      // Report header with index
+      doc.fontSize(14)
+         .font('Helvetica-Bold')
+         .fillColor('#2563eb')
+         .text(`${index + 1}. ${report.courseName || 'N/A'} (${report.courseCode || 'N/A'})`)
+         .moveDown(0.3);
+      
+      // Report details in two columns
+      doc.fontSize(10)
+         .font('Helvetica')
+         .fillColor('#333333');
+      
+      // Left column
+      let leftX = 50;
+      let rightX = 300;
+      let lineHeight = 18;
+      let yPos = doc.y;
+      
+      doc.text(`Lecturer:`, leftX, yPos);
+      doc.text(`${report.lecturerName || 'N/A'}`, 120, yPos);
+      
+      doc.text(`Faculty:`, leftX, yPos + lineHeight);
+      doc.text(`${report.facultyName || 'N/A'}`, 120, yPos + lineHeight);
+      
+      doc.text(`Class:`, leftX, yPos + (lineHeight * 2));
+      doc.text(`${report.className || 'N/A'}`, 120, yPos + (lineHeight * 2));
+      
+      doc.text(`Topic:`, leftX, yPos + (lineHeight * 3));
+      doc.text(`${report.topic || 'N/A'}`, 120, yPos + (lineHeight * 3));
+      
+      doc.text(`Week:`, rightX, yPos);
+      doc.text(`${report.week || 'N/A'}`, 350, yPos);
+      
+      doc.text(`Date:`, rightX, yPos + lineHeight);
+      doc.text(`${report.date || 'N/A'}`, 350, yPos + lineHeight);
+      
+      doc.text(`Venue:`, rightX, yPos + (lineHeight * 2));
+      doc.text(`${report.venue || 'N/A'}`, 350, yPos + (lineHeight * 2));
+      
+      doc.text(`Time:`, rightX, yPos + (lineHeight * 3));
+      doc.text(`${report.scheduledTime || 'N/A'}`, 350, yPos + (lineHeight * 3));
+      
+      let newY = yPos + (lineHeight * 4);
+      
+      // Attendance with visual bar
+      const attendancePercent = report.totalRegistered > 0 
+        ? (report.actualPresent / report.totalRegistered) * 100 
         : 0;
       
-      // Safely escape strings
-      const safeCourseName = (report.courseName || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeCourseCode = (report.courseCode || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeLecturerName = (report.lecturerName || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeFacultyName = (report.facultyName || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeClassName = (report.className || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeTopic = (report.topic || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeWeek = (report.week || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeDate = (report.date || 'N/A').toString();
-      const safeVenue = (report.venue || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeTime = (report.scheduledTime || 'N/A').toString();
-      const safeOutcomes = (report.outcomes || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeRecommendations = (report.recommendations || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safePrlFeedback = (report.prlFeedback || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const safeRevisionNotes = (report.revisionNotes || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      doc.text(`Attendance:`, leftX, newY);
+      doc.text(`${report.actualPresent || 0}/${report.totalRegistered || 0} (${attendancePercent.toFixed(1)}%)`, 120, newY);
       
-      htmlContent += `
-            <div class="report-card">
-                <div class="report-title">${index + 1}. ${safeCourseName} (${safeCourseCode})</div>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <div class="info-label">👨‍🏫 Lecturer</div>
-                        <div class="info-value">${safeLecturerName}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">🏛 Faculty</div>
-                        <div class="info-value">${safeFacultyName}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">📚 Class</div>
-                        <div class="info-value">${safeClassName}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">📖 Topic</div>
-                        <div class="info-value">${safeTopic}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">📅 Week</div>
-                        <div class="info-value">${safeWeek}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">📆 Date</div>
-                        <div class="info-value">${safeDate}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">📍 Venue</div>
-                        <div class="info-value">${safeVenue}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">⏰ Time</div>
-                        <div class="info-value">${safeTime}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">👥 Attendance</div>
-                        <div class="info-value">
-                            ${report.actualPresent || 0}/${report.totalRegistered || 0}
-                            <div class="attendance-bar">
-                                <div class="attendance-progress">
-                                    <div class="attendance-fill" style="width: ${attendancePercentage}%"></div>
-                                </div>
-                                <span>${attendancePercentage}%</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">📊 Status</div>
-                        <div class="info-value">
-                            <span class="status ${statusClass}">${statusText}</span>
-                        </div>
-                    </div>
-                </div>`;
-
-      if (safeOutcomes) {
-        htmlContent += `
-                <div class="info-item" style="margin-top: 10px;">
-                    <div class="info-label">🎯 Learning Outcomes</div>
-                    <div class="info-value">${safeOutcomes}</div>
-                </div>`;
+      // Draw attendance bar
+      const barWidth = 200;
+      const barHeight = 8;
+      doc.rect(120, newY + 12, barWidth, barHeight)
+         .fillColor('#e5e7eb')
+         .fill();
+      doc.rect(120, newY + 12, (attendancePercent / 100) * barWidth, barHeight)
+         .fillColor('#10b981')
+         .fill();
+      
+      newY += 25;
+      
+      // Status
+      let statusColor = '#f59e0b';
+      let statusText = 'Pending';
+      if (report.status === 'reviewed') {
+        statusColor = '#10b981';
+        statusText = 'Reviewed';
+      } else if (report.status === 'needs_revision') {
+        statusColor = '#ef4444';
+        statusText = 'Needs Revision';
       }
-
-      if (safeRecommendations) {
-        htmlContent += `
-                <div class="info-item" style="margin-top: 10px;">
-                    <div class="info-label">💡 Recommendations</div>
-                    <div class="info-value">${safeRecommendations}</div>
-                </div>`;
+      
+      doc.text(`Status:`, leftX, newY);
+      doc.fillColor(statusColor)
+         .text(statusText, 120, newY);
+      doc.fillColor('#333333');
+      
+      newY += 20;
+      
+      // Learning Outcomes
+      if (report.outcomes) {
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .text('Learning Outcomes:', leftX, newY);
+        doc.font('Helvetica')
+           .fontSize(9)
+           .text(report.outcomes, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
-
-      if (safePrlFeedback) {
-        htmlContent += `
-                <div class="feedback-box">
-                    <div class="feedback-title">📝 PRL Feedback</div>
-                    <div class="feedback-text">${safePrlFeedback}</div>
-                </div>`;
+      
+      // Recommendations
+      if (report.recommendations) {
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .text('Recommendations:', leftX, newY);
+        doc.font('Helvetica')
+           .fontSize(9)
+           .text(report.recommendations, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
-
-      if (safeRevisionNotes) {
-        htmlContent += `
-                <div class="feedback-box" style="border-left-color: #ef4444;">
-                    <div class="feedback-title" style="color: #ef4444;">🔄 Revision Notes</div>
-                    <div class="feedback-text">${safeRevisionNotes}</div>
-                </div>`;
+      
+      // PRL Feedback
+      if (report.prlFeedback) {
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .fillColor('#2563eb')
+           .text('PRL Feedback:', leftX, newY);
+        doc.font('Helvetica')
+           .fontSize(9)
+           .fillColor('#333333')
+           .text(report.prlFeedback, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
-
-      htmlContent += `
-            </div>`;
+      
+      // Revision Notes
+      if (report.revisionNotes) {
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .fillColor('#ef4444')
+           .text('Revision Notes:', leftX, newY);
+        doc.font('Helvetica')
+           .fontSize(9)
+           .fillColor('#333333')
+           .text(report.revisionNotes, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
+      }
+      
+      // Separator line between reports
+      doc.moveDown(0.5)
+         .strokeColor('#e5e7eb')
+         .lineWidth(0.5)
+         .moveTo(50, newY + 10)
+         .lineTo(550, newY + 10)
+         .stroke()
+         .moveDown(1);
     });
-
-    htmlContent += `
-        </div>
-        <div class="footer">
-            <p>Generated by Lecture Report System • ${new Date().toLocaleString()}</p>
-            <p>This is an automatically generated document</p>
-            <p style="margin-top: 10px;">💡 Tip: Use browser's Print function (Ctrl+P) to save as PDF</p>
-        </div>
-    </div>
-</body>
-</html>`;
-
-    // Send as HTML file
-    res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.html');
-    res.send(htmlContent);
     
-    console.log('HTML export completed successfully');
+    // Add footer
+    const pageCount = doc.bufferedPageRange().count;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(8)
+         .fillColor('#999999')
+         .text(
+           `Generated by Lecture Report System • Page ${i + 1} of ${pageCount}`,
+           50,
+           doc.page.height - 50,
+           { align: 'center', width: 500 }
+         );
+    }
+    
+    // Finalize PDF
+    doc.end();
+    console.log('PDF generated successfully');
     
   } catch (error) {
-    console.error('Export error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message,
-      stack: error.stack 
-    });
+    console.error('PDF Export error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
