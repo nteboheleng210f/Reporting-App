@@ -1,26 +1,12 @@
-const express = require('express');
-const router = express.Router();
-
-const {
+module.exports = {
   getCourses,
   getStudentCourses,
   getLecturerCourses,
   getCourseById,
   createCourse,
-  deleteCourse,
-  updateCourseLecturer,
+  updateCourse,           // ← ADD THIS
+  deleteCourse,           // ← ADD THIS
+  updateCourseLecturer,   // ← ADD THIS
   getClasses,
   getLecturers,
-} = require('../controllers/courseController');
-
-router.get('/student',                        getStudentCourses);
-router.get('/mine',                           getLecturerCourses);
-router.get('/classes',                        getClasses);
-router.get('/lecturers',                      getLecturers);
-router.get('/',                               getCourses);
-router.get('/:courseId',                      getCourseById);
-router.post('/',                              createCourse);
-router.delete('/:courseId',                   deleteCourse);          // ← new
-router.patch('/:courseId/lecturer',           updateCourseLecturer);  // ← new
-
-module.exports = router;
+};

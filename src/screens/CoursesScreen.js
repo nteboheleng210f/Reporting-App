@@ -32,7 +32,7 @@ const C = {
   redBg:   "#fee2e2",
 };
 
-function Field({ label, value, onChangeText, placeholder }) {
+function Field({ label, value, onChangeText, placeholder, keyboardType = "default" }) {
   return (
     <View style={s.field}>
       <Text style={s.fieldLabel}>{label}</Text>
@@ -42,6 +42,7 @@ function Field({ label, value, onChangeText, placeholder }) {
         onChangeText={onChangeText}
         placeholder={placeholder || ""}
         placeholderTextColor={C.muted}
+        keyboardType={keyboardType}
       />
     </View>
   );
@@ -113,14 +114,17 @@ function CourseCard({ item }) {
         )}
         {!!item.venue && (
           <View style={s.metaChip}>
-            <Text style={s.metaChipText}>{item.venue}</Text>
+            <Text style={s.metaChipText}> {item.venue}</Text>
           </View>
         )}
-        {(item.day || item.time) && (
+        {item.day && (
           <View style={s.metaChip}>
-            <Text style={s.metaChipText}>
-              {[item.day, item.time].filter(Boolean).join("  ·  ")}
-            </Text>
+            <Text style={s.metaChipText}> {item.day}</Text>
+          </View>
+        )}
+        {item.time && (
+          <View style={s.metaChip}>
+            <Text style={s.metaChipText}> {item.time}</Text>
           </View>
         )}
         <View style={[s.metaChip, !!item.lecturerName ? s.metaChipGold : s.metaChipRed]}>
@@ -141,7 +145,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
 
   const hasLecturer = !!item.lecturerId;
 
-  // Delete course
   const handleDelete = () => {
     Alert.alert(
       "Delete Course",
@@ -171,7 +174,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
     );
   };
 
-  // Reassign lecturer (or assign if none)
   const handleReassign = async (lecturer) => {
     setActionLoading(true);
     try {
@@ -194,7 +196,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
 
   return (
     <View style={s.courseCard}>
-      {/* Header */}
       <View style={s.courseCardHeader}>
         <View style={s.courseInitials}>
           <Text style={s.courseInitialsText}>
@@ -207,7 +208,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
             <Text style={s.courseCardCode}>{item.courseCode}</Text>
           )}
         </View>
-        {/* Manage toggle */}
         <TouchableOpacity
           style={s.manageBtn}
           onPress={() => {
@@ -220,7 +220,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
         </TouchableOpacity>
       </View>
 
-      {/* Meta chips */}
       <View style={s.metaRow}>
         {!!item.className && (
           <View style={s.metaChip}>
@@ -229,27 +228,28 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
         )}
         {!!item.venue && (
           <View style={s.metaChip}>
-            <Text style={s.metaChipText}>{item.venue}</Text>
+            <Text style={s.metaChipText}> {item.venue}</Text>
           </View>
         )}
-        {(item.day || item.time) && (
+        {item.day && (
           <View style={s.metaChip}>
-            <Text style={s.metaChipText}>
-              {[item.day, item.time].filter(Boolean).join("  ·  ")}
-            </Text>
+            <Text style={s.metaChipText}> {item.day}</Text>
+          </View>
+        )}
+        {item.time && (
+          <View style={s.metaChip}>
+            <Text style={s.metaChipText}> {item.time}</Text>
           </View>
         )}
         <View style={[s.metaChip, hasLecturer ? s.metaChipGold : s.metaChipRed]}>
           <Text style={[s.metaChipText, hasLecturer ? s.metaChipTextGold : s.metaChipTextRed]}>
-            {hasLecturer ? `👤 ${item.lecturerName}` : "No lecturer assigned"}
+            {hasLecturer ? ` ${item.lecturerName}` : "No lecturer assigned"}
           </Text>
         </View>
       </View>
 
-      {/* Manage panel */}
       {managing && (
         <View style={s.managePanel}>
-          {/* Current lecturer info */}
           <View style={s.currentLecturerBox}>
             <Text style={s.currentLecturerLabel}>Currently assigned lecturer</Text>
             <Text style={s.currentLecturerName}>
@@ -261,7 +261,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
             <ActivityIndicator size="small" color={C.navy} style={{ marginVertical: 8 }} />
           ) : (
             <>
-              {/* Reassign section */}
               {!showReassign ? (
                 <TouchableOpacity
                   style={s.actionBtn}
@@ -269,7 +268,7 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
                   activeOpacity={0.8}
                 >
                   <Text style={s.actionBtnText}>
-                    {hasLecturer ? "🔄 Reassign Lecturer" : "➕ Assign Lecturer"}
+                    {hasLecturer ? " Reassign Lecturer" : " Assign Lecturer"}
                   </Text>
                 </TouchableOpacity>
               ) : (
@@ -302,7 +301,6 @@ function PLCourseCard({ item, lecturers, onDeleted, onLecturerUpdated }) {
                 </View>
               )}
 
-              {/* Delete Course button */}
               {!showReassign && (
                 <TouchableOpacity
                   style={[s.actionBtn, s.actionBtnDelete]}
@@ -331,10 +329,15 @@ export default function CoursesScreen() {
   const [classes, setClasses] = useState([]);
   const [lecturers, setLecturers] = useState([]);
 
+  // Form fields
   const [courseName, setCourseName] = useState("");
   const [courseCode, setCourseCode] = useState("");
   const [selectedClass, setSelectedClass] = useState(null);
   const [selectedLecturer, setSelectedLecturer] = useState(null);
+  const [venue, setVenue] = useState("");
+  const [day, setDay] = useState("");
+  const [time, setTime] = useState("");
+  
   const [showClassDrop, setShowClassDrop] = useState(false);
   const [showLecturerDrop, setShowLecturerDrop] = useState(false);
 
@@ -373,8 +376,9 @@ export default function CoursesScreen() {
 
   const createCourse = async () => {
     if (!courseName || !courseCode || !selectedClass || !selectedLecturer) {
-      return Alert.alert("Missing fields", "Please fill all fields.");
+      return Alert.alert("Missing fields", "Please fill all required fields.");
     }
+    
     setLoading(true);
     try {
       const payload = {
@@ -382,9 +386,9 @@ export default function CoursesScreen() {
         courseCode,
         classId: selectedClass.id,
         className: selectedClass.className,
-        venue: selectedClass.venue || "",
-        day: selectedClass.day || "",
-        time: selectedClass.time || "",
+        venue: venue || "",
+        day: day || "",
+        time: time || "",
         lecturerId: selectedLecturer.id,
         lecturerName: selectedLecturer.username || selectedLecturer.email,
       };
@@ -395,6 +399,9 @@ export default function CoursesScreen() {
         setCourseCode("");
         setSelectedClass(null);
         setSelectedLecturer(null);
+        setVenue("");
+        setDay("");
+        setTime("");
         setShowClassDrop(false);
         setShowLecturerDrop(false);
         await loadCourses();
@@ -509,6 +516,7 @@ export default function CoursesScreen() {
       >
         <FormSection title="Create New Course" />
         <View style={s.formCard}>
+          {/* Row 1: Course Name and Code */}
           <View style={s.row}>
             <View style={{ flex: 1 }}>
               <Field
@@ -529,15 +537,12 @@ export default function CoursesScreen() {
             </View>
           </View>
 
+          {/* Class Dropdown */}
           <Dropdown
-            label="Select Class Schedule"
+            label="Select Class"
             placeholder="Choose a class"
-            selected={
-              selectedClass
-                ? `${selectedClass.className}  ·  ${selectedClass.venue || ""}`
-                : null
-            }
-            open={showClassDrop}
+            selected={selectedClass ? selectedClass.className : null}
+                open={showClassDrop}
             onToggle={() => {
               setShowClassDrop(!showClassDrop);
               setShowLecturerDrop(false);
@@ -547,7 +552,7 @@ export default function CoursesScreen() {
               <DropdownOption
                 key={item.id}
                 title={item.className}
-                sub={[item.venue, item.day, item.time].filter(Boolean).join("  ·  ")}
+                sub={`${item.semester || "No semester"} • ${item.facultyName || "No faculty"}`}
                 onPress={() => {
                   setSelectedClass(item);
                   setShowClassDrop(false);
@@ -556,14 +561,39 @@ export default function CoursesScreen() {
             ))}
           </Dropdown>
 
+          {/* Row 2: Venue, Day, Time */}
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Venue"
+                value={venue}
+                onChangeText={setVenue}
+                placeholder="e.g. Room 101"
+              />
+            </View>
+            <View style={{ width: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Field
+                label="Day"
+                value={day}
+                onChangeText={setDay}
+                placeholder="e.g. Monday"
+              />
+            </View>
+          </View>
+
+          <Field
+            label="Time"
+            value={time}
+            onChangeText={setTime}
+            placeholder="e.g. 09:00 - 11:00"
+          />
+
+          {/* Lecturer Dropdown */}
           <Dropdown
             label="Select Lecturer"
             placeholder="Choose a lecturer"
-            selected={
-              selectedLecturer
-                ? selectedLecturer.username || selectedLecturer.email
-                : null
-            }
+            selected={selectedLecturer ? selectedLecturer.username || selectedLecturer.email : null}
             open={showLecturerDrop}
             onToggle={() => {
               setShowLecturerDrop(!showLecturerDrop);
@@ -601,7 +631,6 @@ export default function CoursesScreen() {
           <View style={s.emptyCard}>
             <Text style={s.emptyTitle}>No courses yet</Text>
             <Text style={s.emptyText}>
-              Use the form above to create your first course.
             </Text>
           </View>
         ) : (
@@ -740,7 +769,6 @@ const s = StyleSheet.create({
   },
   submitText: { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
 
-  // Course cards
   courseCard: {
     backgroundColor: C.card,
     borderWidth: 1,

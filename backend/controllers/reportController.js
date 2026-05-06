@@ -67,23 +67,75 @@ const getReports = async (req, res) => {
 };
 
 // ─── Get THIS lecturer's own reports only ────────────────────────────────────
-const getMyReports = async (req, res) => {
+// Create report - with duplicate check
+const createReport = async (req, res) => {
   try {
+    const {
+      facultyName, className, week, date, courseName, courseCode,
+      classId, lecturerName, actualPresent, totalRegistered, venue,
+      scheduledTime, topic, outcomes, recommendations
+    } = req.body;
+
     const lecturerId = req.headers['x-user-id'];
-    if (!lecturerId) return res.json({ success: true, reports: [] });
 
-    const snapshot = await db.collection('lectureReports')
-      .where('lecturerId', '==', lecturerId)
-      .orderBy('createdAt', 'desc')
-      .get();
+    if (!lecturerId) {
+      return res.status(400).json({ success: false, error: 'Lecturer ID required' });
+    }
+    if (!topic || !actualPresent) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
 
-    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json({ success: true, reports });
+    // ✅ CHECK FOR DUPLICATE WEEK REPORT
+    if (week && classId) {
+      const existingSnap = await db.collection('lectureReports')
+        .where('lecturerId', '==', lecturerId)
+        .where('classId', '==', classId)
+        .where('week', '==', Number(week))
+        .get();
+
+      if (!existingSnap.empty) {
+        return res.status(409).json({ 
+          success: false, 
+          error: `You have already submitted a report for Week ${week}. Please edit the existing report instead.`,
+          existingReportId: existingSnap.docs[0].id
+        });
+      }
+    }
+
+    const reportData = {
+      facultyName: facultyName || '',
+      className: className || '',
+      week: week ? Number(week) : null,
+      date: date || new Date().toISOString().split('T')[0],
+      courseName,
+      courseCode,
+      classId: classId || '',
+      lecturerId,
+      lecturerName: lecturerName || '',
+      actualPresent: Number(actualPresent),
+      totalRegistered: totalRegistered ? Number(totalRegistered) : 0,
+      venue: venue || '',
+      scheduledTime: scheduledTime || '',
+      topic,
+      outcomes: outcomes || '',
+      recommendations: recommendations || '',
+      status: 'pending',
+      prlFeedback: '',
+      createdAt: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('lectureReports').add(reportData);
+
+    res.status(201).json({
+      success: true,
+      message: 'Report submitted successfully',
+      reportId: docRef.id
+    });
   } catch (error) {
+    console.error('Create report error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 // ─── PRL: add structured feedback to a report ────────────────────────────────
 const updateReportFeedback = async (req, res) => {
   try {

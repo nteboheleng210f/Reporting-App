@@ -39,8 +39,8 @@ function InfoRow({ label, value }) {
   );
 }
 
+// Simplified Course Card - Only shows Course Name
 function CourseCard({ item }) {
-  const initial = (item.lecturerName || "L")[0].toUpperCase();
   return (
     <View style={s.courseCard}>
       <View style={s.courseLeft}>
@@ -49,23 +49,7 @@ function CourseCard({ item }) {
           <View style={s.codeBadge}>
             <Text style={s.codeBadgeText}>{item.courseCode}</Text>
           </View>
-          {!!item.venue && (
-            <Text style={s.courseMeta}>{item.venue}</Text>
-          )}
-          {!!item.day && (
-            <Text style={s.courseMeta}>{item.day} {item.time}</Text>
-          )}
         </View>
-      </View>
-
-      
-      <View style={s.lecturerBlock}>
-        <View style={s.lecturerAvatar}>
-          <Text style={s.lecturerAvatarText}>{initial}</Text>
-        </View>
-        <Text style={s.lecturerName} numberOfLines={1}>
-          {item.lecturerName || "Not assigned"}
-        </Text>
       </View>
     </View>
   );
@@ -97,23 +81,45 @@ export default function StudentProfile({ navigation }) {
         }));
       }
 
-      // Get full profile from backend (classId, className, semester)
+      // Get student stats (attendance, ratings, classId)
       const statsRes = await api.get("/student/stats");
       if (statsRes.data.success) {
         const { user } = statsRes.data;
+        const classId = user?.classId;
+        
         setProfile(prev => ({
           ...prev,
-          classId:   user?.classId   || "",
-          className: user?.className || "",
-          semester:  user?.semester  || "",
+          classId: classId || "",
         }));
+
+        // If student has a classId, fetch class details from classSchedules
+        if (classId) {
+          try {
+            const classRes = await api.get(`/classes/${classId}`);
+            if (classRes.data.success) {
+              const classData = classRes.data.class;
+              setProfile(prev => ({
+                ...prev,
+                className: classData.className || "",
+                semester: classData.semester || "",
+              }));
+            }
+          } catch (classError) {
+            console.log("Failed to load class details:", classError);
+          }
+        }
       }
 
-      
-      const coursesRes = await api.get("ratings/courses");
-      if (coursesRes.data.success) {
-        setCourses(coursesRes.data.courses);
+      // Get student's courses (only course name and code)
+      try {
+        const coursesRes = await api.get("/courses/student");
+        if (coursesRes.data.success) {
+          setCourses(coursesRes.data.courses);
+        }
+      } catch (coursesError) {
+        console.log("Failed to load courses:", coursesError);
       }
+      
     } catch (error) {
       console.log("Failed to load profile:", error);
     } finally {
@@ -146,8 +152,6 @@ export default function StudentProfile({ navigation }) {
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-
-      
         <View style={s.header}>
           <Text style={s.eyebrow}>Student</Text>
           <Text style={s.headerTitle}>My Profile</Text>
@@ -155,8 +159,7 @@ export default function StudentProfile({ navigation }) {
         </View>
 
         <View style={s.body}>
-
-         
+          {/* Avatar Section */}
           <View style={s.avatarSection}>
             <View style={s.avatarCircle}>
               <Text style={s.avatarText}>{initials}</Text>
@@ -172,37 +175,38 @@ export default function StudentProfile({ navigation }) {
                 s.statusBadgeText,
                 profile.classId ? s.badgeAssignedText : s.badgePendingText
               ]}>
-                {profile.classId ? "Enrolled" : " Pending Assignment"}
+                {profile.classId ? "Enrolled" : "Pending Assignment"}
               </Text>
             </View>
           </View>
 
-          {/* ── Personal info ── */}
+          {/* Personal Information */}
           <SectionLabel text="Personal Information" />
           <View style={s.infoCard}>
-            <InfoRow label="Full Name"    value={profile.name} />
+            <InfoRow label="Full Name" value={profile.name} />
             <View style={s.divider} />
-            <InfoRow label="Email"        value={profile.email} />
+            <InfoRow label="Email" value={profile.email} />
             <View style={s.divider} />
-            <InfoRow label="Phone"        value={profile.phone} />
+            <InfoRow label="Phone" value={profile.phone} />
+
           </View>
 
-          {/* ── Academic info ── */}
+          {/* Academic Information */}
           <SectionLabel text="Academic Information" />
           <View style={s.infoCard}>
-            <InfoRow label="Class"        value={profile.className} />
+            <InfoRow label="Class" value={profile.className || "Not assigned"} />
             <View style={s.divider} />
-            <InfoRow label="Semester"     value={profile.semester} />
+            <InfoRow label="Semester" value={profile.semester || "Not assigned"} />
             <View style={s.divider} />
-            <InfoRow label="Student ID"   value={profile.classId ? "Enrolled" : "Not assigned"} />
+            <InfoRow label="Student ID" value={profile.classId ? profile.classId.substring(0, 8) + "..." : "Not assigned"} />
           </View>
 
-          {/* ── Courses & lecturers ── */}
-          <SectionLabel text="My Courses & Lecturers" />
+          {/* Courses - Only Course Name and Code */}
+          <SectionLabel text="My Courses" />
 
           {courses.length === 0 ? (
             <View style={s.emptyCard}>
-              <Text style={s.emptyIcon}></Text>
+              <Text style={s.emptyIcon}>📚</Text>
               <Text style={s.emptyTitle}>No Courses Yet</Text>
               <Text style={s.emptySubtitle}>
                 Courses will appear here once your programme leader assigns you to a class.
@@ -213,7 +217,6 @@ export default function StudentProfile({ navigation }) {
               <CourseCard key={item.id} item={item} />
             ))
           )}
-
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -225,7 +228,7 @@ const s = StyleSheet.create({
   centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
   loadingText: { color: C.muted, fontSize: 14, marginTop: 10 },
 
-  // ── Header ───────────────────────────────────────────────────────────────────
+  // Header
   header: {
     backgroundColor: C.navy,
     paddingTop: 52, paddingBottom: 24, paddingHorizontal: 24,
@@ -239,7 +242,7 @@ const s = StyleSheet.create({
 
   body: { padding: 16, paddingBottom: 48 },
 
-  // ── Avatar section ────────────────────────────────────────────────────────────
+  // Avatar Section
   avatarSection: {
     alignItems: "center",
     paddingVertical: 24,
@@ -264,13 +267,14 @@ const s = StyleSheet.create({
   badgeAssignedText: { color: C.green },
   badgePendingText:  { color: "#d97706" },
 
-  // ── Section label ─────────────────────────────────────────────────────────────
+  // Section Label
   sectionLabel: {
     fontSize: 11, fontWeight: "600", letterSpacing: 1,
     color: C.muted, textTransform: "uppercase",
     marginTop: 20, marginBottom: 10,
   },
 
+  // Info Card
   infoCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
     borderRadius: 14, overflow: "hidden",
@@ -283,11 +287,10 @@ const s = StyleSheet.create({
   infoValue: { fontSize: 13, color: C.text,  fontWeight: "600", textAlign: "right", flex: 1, marginLeft: 16 },
   divider:   { height: 1, backgroundColor: C.border, marginHorizontal: 16 },
 
-
+  // Course Card - Simplified (Only Name and Code)
   courseCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 16, marginBottom: 10,
-    flexDirection: "row", alignItems: "center", gap: 12,
   },
   courseLeft:    { flex: 1 },
   courseName:    { fontSize: 14, fontWeight: "700", color: C.text, marginBottom: 6 },
@@ -297,17 +300,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 2,
   },
   codeBadgeText: { fontSize: 10, fontWeight: "600", color: C.navy, letterSpacing: 0.5 },
-  courseMeta:    { fontSize: 11, color: C.muted },
 
-  lecturerBlock: { alignItems: "center", gap: 6, minWidth: 70 },
-  lecturerAvatar: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: C.navy, alignItems: "center", justifyContent: "center",
-  },
-  lecturerAvatarText: { fontSize: 14, fontWeight: "700", color: C.gold },
-  lecturerName:       { fontSize: 11, color: C.muted, textAlign: "center", maxWidth: 70 },
-
-  // ── Empty state ───────────────────────────────────────────────────────────────
+  // Empty State
   emptyCard: {
     backgroundColor: C.empty, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 28, alignItems: "center",

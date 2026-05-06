@@ -5,20 +5,22 @@ const {
   getClasses,
   getLecturerClasses,
   createClass,
-  deleteClass,
+  updateClass,      // ← new
+  deleteClass,      // ← new
   getClassStudents,
   assignStudent,
-  unassignStudent,
+  unassignStudent,  // ← new
   getClassById,
 } = require('../controllers/classController');
 
 router.get('/mine',                        getLecturerClasses);
 router.get('/',                            getClasses);
-router.get('/:classId/students',           getClassStudents);       // supports ?search=
+router.get('/:classId/students',           getClassStudents);
 router.post('/',                           createClass);
-router.delete('/:classId',                 deleteClass);            // ← new
+router.put('/:classId',                    updateClass);       // ← new
+router.delete('/:classId',                 deleteClass);       // ← new
 router.post('/assign',                     assignStudent);
-router.delete('/students/:studentId',      unassignStudent);        // ← new
+router.delete('/students/:studentId',      unassignStudent);   // ← new
 router.get('/:classId',                    getClassById);
 
 module.exports = router;
