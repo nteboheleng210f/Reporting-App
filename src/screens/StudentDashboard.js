@@ -367,7 +367,7 @@ const s = StyleSheet.create({
   navCardSub:   { fontSize: 12, color: C.muted },
   navArrow:     { fontSize: 22, color: C.muted, marginLeft: 8 },
 
-  // ── Logout ────────────────────────────────────────────────────────────────────
+  
   logoutBtn: {
     backgroundColor: C.navy, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 4, marginBottom: 16,
