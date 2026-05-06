@@ -5,22 +5,27 @@ const {
   getClasses,
   getLecturerClasses,
   createClass,
-  updateClass,      // ← new
-  deleteClass,      // ← new
+  updateClass,
+  deleteClass,
   getClassStudents,
   assignStudent,
-  unassignStudent,  // ← new
+  unassignStudent,
   getClassById,
 } = require('../controllers/classController');
 
-router.get('/mine',                        getLecturerClasses);
-router.get('/',                            getClasses);
-router.get('/:classId/students',           getClassStudents);
-router.post('/',                           createClass);
-router.put('/:classId',                    updateClass);       // ← new
-router.delete('/:classId',                 deleteClass);       // ← new
-router.post('/assign',                     assignStudent);
-router.delete('/students/:studentId',      unassignStudent);   // ← new
-router.get('/:classId',                    getClassById);
+// Static/named routes FIRST — before any :param routes
+router.get('/mine',                   getLecturerClasses);
+router.post('/assign',                assignStudent);
+router.delete('/students/:studentId', unassignStudent);
+
+// Base routes
+router.get('/',                       getClasses);
+router.post('/',                      createClass);
+
+// Param routes LAST
+router.get('/:classId/students',      getClassStudents);
+router.put('/:classId',               updateClass);
+router.delete('/:classId',            deleteClass);
+router.get('/:classId',               getClassById);
 
 module.exports = router;
