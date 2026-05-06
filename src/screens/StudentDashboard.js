@@ -228,7 +228,7 @@ export default function StudentDashboard({ navigation }) {
 
         <View style={s.body}>
 
-     
+          {/* ✅ Timetable section */}
           <Text style={s.sectionLabel}>My Timetable</Text>
 
           {!isAssigned ? (
@@ -273,7 +273,7 @@ export default function StudentDashboard({ navigation }) {
             navigation={navigation}
           />
 
-       
+          {/* ── Sign out ── */}
           <TouchableOpacity
             style={[s.logoutBtn, loading && { opacity: 0.6 }]}
             onPress={logout}

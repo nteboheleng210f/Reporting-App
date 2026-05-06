@@ -110,7 +110,7 @@ export default function StudentProfile({ navigation }) {
       }
 
       
-      const coursesRes = await api.get("/courses");
+      const coursesRes = await api.get("ratings/courses");
       if (coursesRes.data.success) {
         setCourses(coursesRes.data.courses);
       }
