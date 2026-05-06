@@ -219,7 +219,6 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Search students
   const handleSearch = (query) => {
     setSearchQuery(query);
     if (!query.trim()) {
@@ -234,7 +233,6 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // CREATE CLASS - ONLY className, facultyName, semester
   const createClass = async () => {
     if (!className || !facultyName || !semester) {
       return Alert.alert("Missing fields", "Please fill Class Name, Faculty, and Semester.");
@@ -262,7 +260,7 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Edit class
+  // EDIT CLASS
   const openEditModal = (classItem) => {
     setEditingClass(classItem);
     setEditClassName(classItem.className);
@@ -298,36 +296,41 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // Delete class
-  const deleteClass = (classItem) => {
-    Alert.alert("Delete Class", `Delete "${classItem.className}"? This cannot be undone.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setLoading(true);
-          try {
-            const response = await api.delete(`/classes/${classItem.id}`);
-            if (response.data.success) {
-              Alert.alert("Success", "Class deleted successfully.");
-              if (selectedClassId === classItem.id) {
-                setSelectedClassId(null);
-                setSelectedClassName("");
+  // DELETE CLASS
+  const handleDeleteClass = (classItem) => {
+    Alert.alert(
+      "Delete Class",
+      `Are you sure you want to delete "${classItem.className}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setLoading(true);
+            try {
+              const response = await api.delete(`/classes/${classItem.id}`);
+              if (response.data.success) {
+                Alert.alert("Success", "Class deleted successfully.");
+                if (selectedClassId === classItem.id) {
+                  setSelectedClassId(null);
+                  setSelectedClassName("");
+                }
+                const role = await getUserRole();
+                await loadClasses(role);
               }
-              const role = await getUserRole();
-              await loadClasses(role);
+            } catch (error) {
+              Alert.alert("Error", error.response?.data?.error || "Failed to delete class");
+            } finally {
+              setLoading(false);
             }
-          } catch (error) {
-            Alert.alert("Error", error.response?.data?.error || "Failed to delete class");
-          } finally {
-            setLoading(false);
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
+  // ASSIGN STUDENT
   const assignStudent = async (studentId, classId) => {
     try {
       const response = await api.post("/classes/assign", { studentId, classId });
@@ -341,25 +344,31 @@ export default function ClassScheduleScreen() {
     }
   };
 
+  // UNASSIGN STUDENT
   const unassignStudent = async (studentId, classId) => {
-    Alert.alert("Unassign Student", "Remove this student from the class?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Unassign",
-        onPress: async () => {
-          try {
-            const response = await api.delete(`/classes/students/${studentId}`);
-            if (response.data.success) {
-              setAssignedMap((prev) => ({ ...prev, [studentId]: null }));
-              Alert.alert("Success", "Student unassigned successfully");
-              await loadStudents(classId);
+    Alert.alert(
+      "Unassign Student",
+      `Remove ${studentId} from this class?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unassign",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await api.delete(`/classes/students/${studentId}`);
+              if (response.data.success) {
+                setAssignedMap((prev) => ({ ...prev, [studentId]: null }));
+                Alert.alert("Success", "Student unassigned successfully");
+                await loadStudents(classId);
+              }
+            } catch (error) {
+              Alert.alert("Error", error.response?.data?.error || "Failed to unassign student");
             }
-          } catch (error) {
-            Alert.alert("Error", error.response?.data?.error || "Failed to unassign student");
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const handleClassSelect = async (classId, name) => {
@@ -432,7 +441,7 @@ export default function ClassScheduleScreen() {
               isSelected={selectedClassId === item.id}
               onAssignPress={() => handleClassSelect(item.id, item.className)}
               onEdit={openEditModal}
-              onDelete={deleteClass}
+              onDelete={handleDeleteClass}
               isPL={isPL}
             />
           ))
@@ -440,13 +449,12 @@ export default function ClassScheduleScreen() {
 
         {isPL && selectedClassId && (
           <>
-            <SectionLabel text={`Manage Students — ${selectedClassName}`} />
+            <SectionLabel text={`Manage Students  ${selectedClassName}`} />
 
-            {/* Search Bar */}
             <View style={s.searchContainer}>
               <TextInput
                 style={s.searchInput}
-                placeholder="🔍 Search students by name or email..."
+                placeholder=" Search students by name or email..."
                 placeholderTextColor={C.muted}
                 value={searchQuery}
                 onChangeText={handleSearch}
@@ -492,7 +500,7 @@ export default function ClassScheduleScreen() {
                 label="Class Name"
                 value={className}
                 onChangeText={setClassName}
-                placeholder="e.g. BSCS Year 3"
+                placeholder="e.g. BSCSMY3"
               />
               <Field
                 label="Faculty"
@@ -504,7 +512,7 @@ export default function ClassScheduleScreen() {
                 label="Semester"
                 value={semester}
                 onChangeText={setSemester}
-                placeholder="e.g. Semester 2, 2025"
+                placeholder="e.g. 2"
               />
 
               <TouchableOpacity
@@ -762,7 +770,6 @@ const s = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
   },
-  row: { flexDirection: "row" },
 
   field: { marginBottom: 14 },
   fieldLabel: { fontSize: 12, fontWeight: "600", color: C.text, marginBottom: 6 },
