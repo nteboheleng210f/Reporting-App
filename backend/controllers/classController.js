@@ -1,5 +1,6 @@
 const { db } = require('../config/firebase');
 
+
 const getClasses = async (req, res) => {
   try {
     const snapshot = await db.collection('classSchedules').get();
@@ -9,6 +10,7 @@ const getClasses = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 const getLecturerClasses = async (req, res) => {
   try {
@@ -44,6 +46,7 @@ const getLecturerClasses = async (req, res) => {
   }
 };
 
+
 const createClass = async (req, res) => {
   try {
     const { className, facultyName, semester } = req.body;
@@ -75,6 +78,7 @@ const createClass = async (req, res) => {
   }
 };
 
+
 const updateClass = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -88,7 +92,7 @@ const updateClass = async (req, res) => {
     }
 
     const classRef = db.collection('classSchedules').doc(classId);
-    const docSnap = await classRef.get();
+    const docSnap  = await classRef.get();
 
     if (!docSnap.exists) {
       return res.status(404).json({ success: false, error: 'Class not found' });
@@ -107,50 +111,49 @@ const updateClass = async (req, res) => {
   }
 };
 
-// FIXED DELETE - Removes class completely even with students/courses
+
+// ── DELETE CLASS — cascades: unassigns all students, unlinks all courses ───────
 const deleteClass = async (req, res) => {
   try {
     const { classId } = req.params;
 
-    // First, unassign all students from this class
-    const studentsSnap = await db.collection('users')
-      .where('role', '==', 'student')
-      .where('classId', '==', classId)
-      .get();
-
-    const unassignPromises = studentsSnap.docs.map(doc =>
-      db.collection('users').doc(doc.id).update({
-        classId: null,
-        updatedAt: new Date().toISOString()
-      })
-    );
-    await Promise.all(unassignPromises);
-    console.log(`Unassigned ${studentsSnap.size} students from class ${classId}`);
-
-    // Delete all courses linked to this class
-    const coursesSnap = await db.collection('courses')
-      .where('classId', '==', classId)
-      .get();
-
-    const deleteCoursePromises = coursesSnap.docs.map(doc =>
-      db.collection('courses').doc(doc.id).delete()
-    );
-    await Promise.all(deleteCoursePromises);
-    console.log(`Deleted ${coursesSnap.size} courses from class ${classId}`);
-
-    // Finally, delete the class itself
     const classRef = db.collection('classSchedules').doc(classId);
-    const docSnap = await classRef.get();
+    const docSnap  = await classRef.get();
 
     if (!docSnap.exists) {
       return res.status(404).json({ success: false, error: 'Class not found' });
     }
 
+    // 1. Unassign all students in this class
+    const studentsSnap = await db.collection('users')
+      .where('role',    '==', 'student')
+      .where('classId', '==', classId)
+      .get();
+
+    const studentUpdates = studentsSnap.docs.map(doc =>
+      doc.ref.update({ classId: null, updatedAt: new Date().toISOString() })
+    );
+
+    // 2. Unlink all courses tied to this class (clear classId + className)
+    const coursesSnap = await db.collection('courses')
+      .where('classId', '==', classId)
+      .get();
+
+    const courseUpdates = coursesSnap.docs.map(doc =>
+      doc.ref.update({
+        classId:   '',
+        className: '',
+        updatedAt: new Date().toISOString(),
+      })
+    );
+
+    // 3. Run all updates in parallel then delete the class
+    await Promise.all([...studentUpdates, ...courseUpdates]);
     await classRef.delete();
 
-    res.json({ 
-      success: true, 
-      message: `Class deleted successfully. Removed ${studentsSnap.size} students and ${coursesSnap.size} courses.` 
+    res.json({
+      success: true,
+      message: `Class deleted. ${studentsSnap.size} student(s) unassigned, ${coursesSnap.size} course(s) unlinked.`,
     });
   } catch (error) {
     console.error('deleteClass error:', error);
@@ -158,6 +161,8 @@ const deleteClass = async (req, res) => {
   }
 };
 
+
+// Returns ALL students with their assigned status for the given class
 const getClassStudents = async (req, res) => {
   try {
     const { classId } = req.params;
@@ -176,7 +181,7 @@ const getClassStudents = async (req, res) => {
       const term = req.query.search.toLowerCase();
       students = students.filter(s =>
         (s.username || '').toLowerCase().includes(term) ||
-        (s.email || '').toLowerCase().includes(term)
+        (s.email    || '').toLowerCase().includes(term)
       );
     }
 
@@ -186,7 +191,7 @@ const getClassStudents = async (req, res) => {
   }
 };
 
-// FIXED ASSIGN - Works properly
+
 const assignStudent = async (req, res) => {
   try {
     const { studentId, classId } = req.body;
@@ -195,70 +200,48 @@ const assignStudent = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Student ID and Class ID required' });
     }
 
-    // Check if student exists
-    const userDoc = await db.collection('users').doc(studentId).get();
-    if (!userDoc.exists) {
-      return res.status(404).json({ success: false, error: 'Student not found' });
-    }
-
-    // Assign student (this REPLACES any previous class)
     await db.collection('users').doc(studentId).update({
-      classId: classId,
+      classId,
       updatedAt: new Date().toISOString(),
     });
 
-    // Get class name for success message
-    const classDoc = await db.collection('classSchedules').doc(classId).get();
-    const className = classDoc.exists ? classDoc.data().className : 'class';
-
-    res.json({ 
-      success: true, 
-      message: `Student assigned to "${className}" successfully` 
-    });
+    res.json({ success: true, message: 'Student assigned successfully' });
   } catch (error) {
-    console.error('assignStudent error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// FIXED UNASSIGN - Works properly
+
+// ── UNASSIGN STUDENT — clears their classId ────────────────────────────────────
 const unassignStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const userDoc = await db.collection('users').doc(studentId).get();
+    const userRef = db.collection('users').doc(studentId);
+    const userDoc = await userRef.get();
+
     if (!userDoc.exists) {
       return res.status(404).json({ success: false, error: 'Student not found' });
     }
 
-    // Get previous class name for message
-    const previousClassId = userDoc.data()?.classId;
-    let className = '';
-    if (previousClassId) {
-      const classDoc = await db.collection('classSchedules').doc(previousClassId).get();
-      className = classDoc.exists ? classDoc.data().className : '';
-    }
-
-    await db.collection('users').doc(studentId).update({
-      classId: null,
+    await userRef.update({
+      classId:   null,
       updatedAt: new Date().toISOString(),
     });
 
-    res.json({ 
-      success: true, 
-      message: className ? `Student unassigned from "${className}" successfully` : 'Student unassigned successfully' 
-    });
+    res.json({ success: true, message: 'Student unassigned successfully' });
   } catch (error) {
     console.error('unassignStudent error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
+
 const getClassById = async (req, res) => {
   try {
-    const { classId } = req.params;
-    const studentId = req.headers['x-user-id'];
-    const userDoc = await db.collection('users').doc(studentId).get();
+    const { classId }    = req.params;
+    const studentId      = req.headers['x-user-id'];
+    const userDoc        = await db.collection('users').doc(studentId).get();
     const studentClassId = userDoc.data()?.classId;
 
     if (!studentClassId || studentClassId !== classId) {
@@ -275,6 +258,7 @@ const getClassById = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 module.exports = {
   getClasses,

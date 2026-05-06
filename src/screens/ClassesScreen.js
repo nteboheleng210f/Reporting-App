@@ -85,7 +85,7 @@ function ClassCard({ item, isLecturer, isSelected, onAssignPress, onEdit, onDele
             <Text style={s.classCardFaculty}>{item.facultyName}</Text>
           )}
           {!!item.semester && (
-            <Text style={s.classSemester}>📚 {item.semester}</Text>
+            <Text style={s.classSemester}> {item.semester}</Text>
           )}
         </View>
 
@@ -98,10 +98,10 @@ function ClassCard({ item, isLecturer, isSelected, onAssignPress, onEdit, onDele
         {isPL && (
           <View style={s.actionButtons}>
             <TouchableOpacity onPress={() => onEdit(item)} style={s.editBtn}>
-              <Text style={s.editBtnText}>✏️</Text>
+              <Text style={s.editBtnText}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => onDelete(item)} style={s.deleteBtn}>
-              <Text style={s.deleteBtnText}>🗑️</Text>
+              <Text style={s.deleteBtnText}>Delete</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -260,7 +260,7 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // EDIT CLASS
+
   const openEditModal = (classItem) => {
     setEditingClass(classItem);
     setEditClassName(classItem.className);
