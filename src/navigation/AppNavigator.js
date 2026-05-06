@@ -15,6 +15,8 @@ import CoursesScreen from "../screens/CoursesScreen";
 import ReportsScreen from "../screens/ReportsScreen";
 import PRLDashboard from "../screens/prl/PRLDashboard";
 import PLDashboard from "../screens/PL/PLDashboard";
+import StudentProfile from "../screens/StudentProfile";
+
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +37,8 @@ export default function AppNavigator() {
         <Stack.Screen name="PRLReports" component={ReportsScreen} />
         <Stack.Screen name="PLDashboard" component={PLDashboard} />
         <Stack.Screen name="Courses" component={CoursesScreen} />
+      
+       <Stack.Screen name="Profile" component={StudentProfile} />
         </Stack.Navigator>
     </NavigationContainer>
   );

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getStudentStats, getUpcomingClass } = require('../controllers/studentDashboardController');
 
-// Add middleware to extract student ID from header
+
 router.use((req, res, next) => {
   const studentId = req.headers['x-user-id'];
   if (studentId) {
@@ -11,7 +11,6 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get('/stats', getStudentStats);
-router.get('/upcoming-class', getUpcomingClass);
-
+router.get('/stats',     getStudentStats);
+router.get('/timetable', getTimetable); 
 module.exports = router;

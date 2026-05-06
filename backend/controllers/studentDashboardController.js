@@ -41,7 +41,7 @@ const getStudentStats = async (req, res) => {
       });
     }
 
-    // Get attendance for THIS student only - FILTER BY studentId
+    
     const attendanceSnap = await db.collection('attendance')
       .where('studentId', '==', studentId)
       .get();
@@ -77,51 +77,38 @@ const getStudentStats = async (req, res) => {
   }
 };
 
-// Get upcoming class for student - ONLY THEIR OWN CLASS
-const getUpcomingClass = async (req, res) => {
+const getTimetable = async (req, res) => {
   try {
     const studentId = req.headers['x-user-id'];
-    
-    console.log("=== getUpcomingClass ===");
-    console.log("Student ID from header:", studentId);
-    
-    if (!studentId) {
-      return res.json({ success: true, upcomingClass: null });
-    }
+    if (!studentId) return res.json({ success: true, timetable: [] });
 
-    // Get student's class ID from their OWN user document
     const userDoc = await db.collection('users').doc(studentId).get();
-    
-    if (!userDoc.exists) {
-      return res.json({ success: true, upcomingClass: null });
-    }
-    
-    const studentClassId = userDoc.data()?.classId;
-    
-    console.log("Student's assigned classId:", studentClassId);
+    if (!userDoc.exists) return res.json({ success: true, timetable: [] });
 
-    // If student has no class assigned, return null
-    if (!studentClassId) {
-      console.log("No class assigned - returning null");
-      return res.json({ success: true, upcomingClass: null });
-    }
+    const classId = userDoc.data()?.classId;
+    if (!classId)  return res.json({ success: true, timetable: [] });
 
-    // Get ONLY the class that matches the student's classId
-    const classDoc = await db.collection('classSchedules').doc(studentClassId).get();
-    
-    if (!classDoc.exists) {
-      console.log("Class document not found for ID:", studentClassId);
-      return res.json({ success: true, upcomingClass: null });
-    }
+    // Get ALL courses for this student's class
+    const coursesSnap = await db.collection('courses')
+      .where('classId', '==', classId)
+      .get();
 
-    const classData = { id: classDoc.id, ...classDoc.data() };
-    console.log("Found class for student:", classData.className);
-    
-    res.json({ success: true, upcomingClass: classData });
+    const timetable = coursesSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(c => c.day) 
+      .sort((a, b) => {
+        const ai = DAY_ORDER.indexOf(a.day);
+        const bi = DAY_ORDER.indexOf(b.day);
+        if (ai !== bi) return ai - bi;
+       
+        return (a.time || "").localeCompare(b.time || "");
+      });
+
+    res.json({ success: true, timetable });
   } catch (error) {
-    console.error('Get upcoming class error:', error);
+    console.error('getTimetable error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-module.exports = { getStudentStats, getUpcomingClass };
+module.exports = { getStudentStats, getTimetable };

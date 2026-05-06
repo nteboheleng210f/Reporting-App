@@ -28,6 +28,25 @@ const C = {
   empty:  "#f0f4ff",
 };
 
+const DAY_COLORS = {
+  Monday:    "#e0f2fe",
+  Tuesday:   "#fce7f3",
+  Wednesday: "#dcfce7",
+  Thursday:  "#fef3c7",
+  Friday:    "#ede9fe",
+  Saturday:  "#fee2e2",
+  Sunday:    "#f1f5f9",
+};
+const DAY_TEXT = {
+  Monday:    "#0369a1",
+  Tuesday:   "#9d174d",
+  Wednesday: "#15803d",
+  Thursday:  "#92400e",
+  Friday:    "#6d28d9",
+  Saturday:  "#b91c1c",
+  Sunday:    "#475569",
+};
+
 function NavCard({ title, subtitle, route, navigation }) {
   return (
     <TouchableOpacity
@@ -44,25 +63,67 @@ function NavCard({ title, subtitle, route, navigation }) {
   );
 }
 
+// ✅ Single timetable row
+function TimetableRow({ item }) {
+  const dayBg   = DAY_COLORS[item.day] || C.badge;
+  const dayText = DAY_TEXT[item.day]   || C.muted;
+  return (
+    <View style={s.timetableRow}>
+      <View style={[s.dayBadge, { backgroundColor: dayBg }]}>
+        <Text style={[s.dayText, { color: dayText }]}>
+          {(item.day || "").slice(0, 3).toUpperCase()}
+        </Text>
+      </View>
+      <View style={s.timetableBody}>
+        <Text style={s.timetableCourse}>{item.courseName}</Text>
+        <Text style={s.timetableMeta}>
+          {[item.time, item.venue].filter(Boolean).join("  •  ")}
+        </Text>
+        {!!item.lecturerName && (
+          <Text style={s.timetableLecturer}>👤 {item.lecturerName}</Text>
+        )}
+      </View>
+      <View style={s.codeBadge}>
+        <Text style={s.codeBadgeText}>{item.courseCode}</Text>
+      </View>
+    </View>
+  );
+}
+
 function EmptyClassCard() {
   return (
     <View style={s.emptyCard}>
-      <Text style={s.emptyIcon}></Text>
+      <Text style={s.emptyIcon}>📋</Text>
       <Text style={s.emptyTitle}>Not Assigned Yet</Text>
+      <Text style={s.emptySubtitle}>
+        Your program leader hasn't assigned you to a class yet.
+      </Text>
+    </View>
+  );
+}
+
+function EmptyTimetable() {
+  return (
+    <View style={s.emptyCard}>
+      <Text style={s.emptyIcon}>🗓</Text>
+      <Text style={s.emptyTitle}>No Timetable Yet</Text>
+      <Text style={s.emptySubtitle}>
+        Your courses will appear here once your programme leader adds them.
+      </Text>
     </View>
   );
 }
 
 export default function StudentDashboard({ navigation }) {
-  const [loading, setLoading]                     = useState(false);
-  const [statsLoading, setStatsLoading]           = useState(true);
-  const [classLoading, setClassLoading]           = useState(true);
+  const [loading, setLoading]                 = useState(false);
+  const [statsLoading, setStatsLoading]       = useState(true);
+  const [timetableLoading, setTimetableLoading] = useState(true);
   const [attendancePercent, setAttendancePercent] = useState(0);
-  const [ratingsCount, setRatingsCount]           = useState(0);
-  const [upcomingClass, setUpcomingClass]         = useState(null);
-  const [studentName, setStudentName]             = useState("");
-  const [studentClass, setStudentClass]           = useState("");
-  const [isAssigned, setIsAssigned]               = useState(false);
+  const [ratingsCount, setRatingsCount]       = useState(0);
+  const [timetable, setTimetable]             = useState([]);
+  const [studentName, setStudentName]         = useState("");
+  const [studentClass, setStudentClass]       = useState("");
+  const [isAssigned, setIsAssigned]           = useState(false);
 
   const getStudentData = async () => {
     const userData = await AsyncStorage.getItem("user_data");
@@ -87,19 +148,18 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  const fetchUpcomingClass = async () => {
+  // ✅ Fetch full timetable instead of just upcoming-class
+  const fetchTimetable = async () => {
     try {
-      const response = await api.get("/student/upcoming-class");
+      const response = await api.get("/student/timetable");
       if (response.data.success) {
-        setUpcomingClass(response.data.upcomingClass || null);
-      } else {
-        setUpcomingClass(null);
+        setTimetable(response.data.timetable || []);
       }
     } catch (error) {
-      console.log("Upcoming class error:", error);
-      setUpcomingClass(null);
+      console.log("Timetable error:", error);
+      setTimetable([]);
     } finally {
-      setClassLoading(false);
+      setTimetableLoading(false);
     }
   };
 
@@ -107,7 +167,7 @@ export default function StudentDashboard({ navigation }) {
     const loadData = async () => {
       await getStudentData();
       await fetchStats();
-      await fetchUpcomingClass();
+      await fetchTimetable();
       setStatsLoading(false);
     };
     loadData();
@@ -140,6 +200,7 @@ export default function StudentDashboard({ navigation }) {
 
       <ScrollView showsVerticalScrollIndicator={false}>
 
+        {/* ── Header ── */}
         <View style={s.header}>
           <Text style={s.eyebrow}>Student</Text>
           <Text style={s.headerTitle}>{studentName || "Dashboard"}</Text>
@@ -159,36 +220,32 @@ export default function StudentDashboard({ navigation }) {
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>
-                {!isAssigned ? "—" : classLoading ? "..." : upcomingClass ? "1" : "0"}
-              </Text>
-              <Text style={s.statMeta}>Upcoming</Text>
+              <Text style={s.statNum}>{isAssigned ? timetable.length : "—"}</Text>
+              <Text style={s.statMeta}>Courses</Text>
             </View>
           </View>
         </View>
 
         <View style={s.body}>
 
-          <Text style={s.sectionLabel}>Next Class</Text>
+     
+          <Text style={s.sectionLabel}>My Timetable</Text>
 
-          {classLoading ? (
-            <View style={s.classCard}>
+          {!isAssigned ? (
+            <EmptyClassCard />
+          ) : timetableLoading ? (
+            <View style={s.loadingCard}>
               <ActivityIndicator size="small" color={C.navy} />
             </View>
-          ) : upcomingClass ? (
-            <View style={s.classCard}>
-              <Text style={s.className}>
-                {upcomingClass.className || upcomingClass.courseName}
-              </Text>
-              <Text style={s.classMeta}>
-                {upcomingClass.day} • {upcomingClass.time}
-              </Text>
-              <Text style={s.classVenue}>{upcomingClass.venue}</Text>
-            </View>
+          ) : timetable.length === 0 ? (
+            <EmptyTimetable />
           ) : (
-            <EmptyClassCard />
+            timetable.map(item => (
+              <TimetableRow key={item.id} item={item} />
+            ))
           )}
 
+          {/* ── Academic nav ── */}
           <Text style={s.sectionLabel}>Academic</Text>
 
           <NavCard
@@ -209,7 +266,14 @@ export default function StudentDashboard({ navigation }) {
             route="Monitoring"
             navigation={navigation}
           />
+          <NavCard
+            title="My Profile"
+            subtitle="View your info and courses"
+            route="Profile"
+            navigation={navigation}
+          />
 
+       
           <TouchableOpacity
             style={[s.logoutBtn, loading && { opacity: 0.6 }]}
             onPress={logout}
@@ -230,20 +294,12 @@ export default function StudentDashboard({ navigation }) {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
-
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: C.bg,
-  },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
   loadingText: { color: C.muted, fontSize: 14, marginTop: 10 },
 
   header: {
     backgroundColor: C.navy,
-    paddingTop: 52,
-    paddingHorizontal: 24,
-    paddingBottom: 0,
+    paddingTop: 52, paddingHorizontal: 24, paddingBottom: 0,
   },
   eyebrow: {
     fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
@@ -252,12 +308,7 @@ const s = StyleSheet.create({
   headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
   headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 28 },
 
-  statStrip: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
-    paddingVertical: 16,
-  },
+  statStrip:   { flexDirection: "row", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)", paddingVertical: 16 },
   statItem:    { flex: 1, alignItems: "center" },
   statNum:     { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
   statMeta:    { fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
@@ -270,14 +321,33 @@ const s = StyleSheet.create({
     color: C.muted, textTransform: "uppercase", marginBottom: 10, marginTop: 4,
   },
 
-  classCard: {
+  loadingCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 16, marginBottom: 16,
+    borderRadius: 12, padding: 20, marginBottom: 16, alignItems: "center",
   },
-  className:  { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 4 },
-  classMeta:  { fontSize: 12, color: C.muted, marginBottom: 2 },
-  classVenue: { fontSize: 12, color: C.muted },
 
+  // ✅ Timetable row
+  timetableRow: {
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+    borderRadius: 12, padding: 14, marginBottom: 8,
+    flexDirection: "row", alignItems: "center", gap: 12,
+  },
+  dayBadge: {
+    width: 44, height: 44, borderRadius: 10,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  dayText:          { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+  timetableBody:    { flex: 1 },
+  timetableCourse:  { fontSize: 14, fontWeight: "700", color: C.text, marginBottom: 3 },
+  timetableMeta:    { fontSize: 12, color: C.muted, marginBottom: 2 },
+  timetableLecturer:{ fontSize: 11, color: C.muted },
+  codeBadge: {
+    backgroundColor: C.badge, borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0,
+  },
+  codeBadgeText: { fontSize: 10, fontWeight: "700", color: C.navy },
+
+  // ── Empty states ──────────────────────────────────────────────────────────────
   emptyCard: {
     backgroundColor: C.empty, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 24, marginBottom: 16, alignItems: "center",
@@ -286,6 +356,7 @@ const s = StyleSheet.create({
   emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
   emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
 
+  // ── Nav cards ─────────────────────────────────────────────────────────────────
   navCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 16, marginBottom: 8,
@@ -296,9 +367,9 @@ const s = StyleSheet.create({
   navCardSub:   { fontSize: 12, color: C.muted },
   navArrow:     { fontSize: 22, color: C.muted, marginLeft: 8 },
 
+  // ── Logout ────────────────────────────────────────────────────────────────────
   logoutBtn: {
-    backgroundColor: C.navy,
-    borderRadius: 12, padding: 16,
+    backgroundColor: C.navy, borderRadius: 12, padding: 16,
     alignItems: "center", marginTop: 4, marginBottom: 16,
     flexDirection: "row", justifyContent: "space-between",
   },
