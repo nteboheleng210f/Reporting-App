@@ -7,8 +7,8 @@ const {
   updateReportFeedback, 
   getPendingReports, 
   getReviewedReports, 
-  exportReportsToExcel
-  
+  exportReportsToExcel,
+  exportReportsToPDF 
 } = require('../controllers/reportController');
 
 
@@ -19,5 +19,6 @@ router.get('/my', getMyReports);
 router.get('/export', exportReportsToExcel);
 router.post('/', createReport);
 router.put('/:reportId/feedback', updateReportFeedback);
+router.get('/export/pdf', exportReportsToPDF);
 
 module.exports = router;
