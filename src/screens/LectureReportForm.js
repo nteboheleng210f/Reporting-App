@@ -122,21 +122,38 @@ export default function LectureReportScreen({ navigation }) {
   };
 
   const selectCourse = async (course) => {
-    setSelected(course);
-    setCourseName(course.courseName || "");
-    setCourseCode(course.courseCode || "");
-    setVenue(course.venue || "");
-    setTime(course.time || "");
-    setLecturerName(course.lecturerName || "");
-    setClassName(course.className || "");
-    setFacultyName(course.facultyName || "FICT");
-    setTotalRegistered(course.totalRegistered || "0");
-    
-    setShowForm(true);
-    clearForm();
-    setDuplicateError("");
-  };
+  setSelected(course);
+  setCourseName(course.courseName || "");
+  setCourseCode(course.courseCode || "");
+  setVenue(course.venue || "");
+  setTime(course.time || "");
+  setLecturerName(course.lecturerName || "");
+  setClassName(course.className || "");
+  setFacultyName(course.facultyName || "FICT");
+  
 
+  if (course.classId) {
+    try {
+      const studentsResponse = await api.get(`/classes/${course.classId}/students`);
+      if (studentsResponse.data.success) {
+        const assignedCount = studentsResponse.data.students.filter(s => s.assigned === true).length;
+        setTotalRegistered(String(assignedCount));
+        console.log("Total registered students:", assignedCount);
+      } else {
+        setTotalRegistered("0");
+      }
+    } catch (error) {
+      console.log("Failed to fetch students:", error);
+      setTotalRegistered("0");
+    }
+  } else {
+    setTotalRegistered("0");
+  }
+  
+  setShowForm(true);
+  clearForm();
+  setDuplicateError("");
+};
   const clearForm = () => {
     setWeek("");
     setDate("");
