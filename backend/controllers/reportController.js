@@ -10,7 +10,6 @@ const createReport = async (req, res) => {
       scheduledTime, topic, outcomes, recommendations
     } = req.body;
 
-    // ✅ Read real lecturerId from header — was hardcoded "test_lecturer"
     const lecturerId = req.headers['x-user-id'];
 
     if (!lecturerId) {
@@ -28,7 +27,7 @@ const createReport = async (req, res) => {
       courseName:       courseName || '',
       courseCode:       courseCode || '',
       classId:          classId || '',
-      lecturerId,                          // ✅ real lecturer ID
+      lecturerId,
       lecturerName:     lecturerName || '',
       actualPresent:    Number(actualPresent),
       totalRegistered:  totalRegistered ? Number(totalRegistered) : 0,
@@ -39,6 +38,7 @@ const createReport = async (req, res) => {
       recommendations:  recommendations || '',
       status:           'pending',
       prlFeedback:      '',
+      requiresRevision: false,
       createdAt:        new Date().toISOString()
     };
 
@@ -84,21 +84,31 @@ const getMyReports = async (req, res) => {
   }
 };
 
-// ─── PRL: add feedback to a report ───────────────────────────────────────────
+// ─── PRL: add structured feedback to a report ────────────────────────────────
 const updateReportFeedback = async (req, res) => {
   try {
     const { reportId } = req.params;
-    const { prlFeedback } = req.body;
+    const {
+      prlFeedback,
+      feedbackType,      // 'approved' | 'needs_revision' | 'excellent'
+      requiresRevision,  // boolean
+      revisionNotes,     // string — what specifically needs fixing
+    } = req.body;
 
     if (!prlFeedback) {
       return res.status(400).json({ success: false, error: 'Feedback is required' });
     }
 
-    await db.collection('lectureReports').doc(reportId).update({
+    const updateData = {
       prlFeedback,
-      status: 'reviewed',
-      reviewedAt: new Date().toISOString()
-    });
+      feedbackType:     feedbackType     || 'approved',
+      requiresRevision: requiresRevision || false,
+      revisionNotes:    revisionNotes    || '',
+      status:           requiresRevision ? 'needs_revision' : 'reviewed',
+      reviewedAt:       new Date().toISOString(),
+    };
+
+    await db.collection('lectureReports').doc(reportId).update(updateData);
 
     res.json({ success: true, message: 'Feedback submitted successfully' });
   } catch (error) {
@@ -106,10 +116,37 @@ const updateReportFeedback = async (req, res) => {
   }
 };
 
+// ─── NEW: PRL — mark report as requiring revision ────────────────────────────
+const markRequiresRevision = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const { revisionNotes } = req.body;
+
+    const docSnap = await db.collection('lectureReports').doc(reportId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+
+    await db.collection('lectureReports').doc(reportId).update({
+      requiresRevision: true,
+      revisionNotes:    revisionNotes || '',
+      status:           'needs_revision',
+      markedAt:         new Date().toISOString(),
+    });
+
+    res.json({ success: true, message: 'Report marked as requiring revision' });
+  } catch (error) {
+    console.error('markRequiresRevision error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // ─── PRL: pending reports ─────────────────────────────────────────────────────
 const getPendingReports = async (req, res) => {
   try {
-    const snapshot = await db.collection('lectureReports').where('status', '==', 'pending').get();
+    const snapshot = await db.collection('lectureReports')
+      .where('status', 'in', ['pending', 'needs_revision'])
+      .get();
     const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, reports });
   } catch (error) {
@@ -120,7 +157,9 @@ const getPendingReports = async (req, res) => {
 // ─── PRL: reviewed reports ────────────────────────────────────────────────────
 const getReviewedReports = async (req, res) => {
   try {
-    const snapshot = await db.collection('lectureReports').where('status', '==', 'reviewed').get();
+    const snapshot = await db.collection('lectureReports')
+      .where('status', '==', 'reviewed')
+      .get();
     const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, reports });
   } catch (error) {
@@ -128,192 +167,186 @@ const getReviewedReports = async (req, res) => {
   }
 };
 
+// ─── Export reports to Excel ──────────────────────────────────────────────────
 const exportReportsToExcel = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
     const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    const workbook = new ExcelJS.Workbook();
+    const workbook  = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Lecture Reports');
 
     worksheet.columns = [
-      { header: 'Course Name',   key: 'courseName',      width: 30 },
-      { header: 'Course Code',   key: 'courseCode',      width: 15 },
-      { header: 'Lecturer',      key: 'lecturerName',    width: 25 },
-      { header: 'Faculty',       key: 'facultyName',     width: 20 },
-      { header: 'Class',         key: 'className',       width: 15 },
-      { header: 'Topic',         key: 'topic',           width: 40 },
-      { header: 'Week',          key: 'week',            width: 10 },
-      { header: 'Date',          key: 'date',            width: 15 },
-      { header: 'Venue',         key: 'venue',           width: 20 },
-      { header: 'Time',          key: 'scheduledTime',   width: 15 },
-      { header: 'Present',       key: 'actualPresent',   width: 10 },
-      { header: 'Registered',    key: 'totalRegistered', width: 12 },
-      { header: 'Status',        key: 'status',          width: 12 },
-      { header: 'PRL Feedback',  key: 'prlFeedback',     width: 40 },
+      { header: 'Course Name',       key: 'courseName',       width: 30 },
+      { header: 'Course Code',       key: 'courseCode',       width: 15 },
+      { header: 'Lecturer',          key: 'lecturerName',     width: 25 },
+      { header: 'Faculty',           key: 'facultyName',      width: 20 },
+      { header: 'Class',             key: 'className',        width: 15 },
+      { header: 'Topic',             key: 'topic',            width: 40 },
+      { header: 'Week',              key: 'week',             width: 10 },
+      { header: 'Date',              key: 'date',             width: 15 },
+      { header: 'Venue',             key: 'venue',            width: 20 },
+      { header: 'Time',              key: 'scheduledTime',    width: 15 },
+      { header: 'Present',           key: 'actualPresent',    width: 10 },
+      { header: 'Registered',        key: 'totalRegistered',  width: 12 },
+      { header: 'Status',            key: 'status',           width: 15 },
+      { header: 'Requires Revision', key: 'requiresRevision', width: 18 },
+      { header: 'PRL Feedback',      key: 'prlFeedback',      width: 40 },
+      { header: 'Revision Notes',    key: 'revisionNotes',    width: 40 },
     ];
 
     reports.forEach(report => {
       worksheet.addRow({
-        courseName:      report.courseName || '',
-        courseCode:      report.courseCode || '',
-        lecturerName:    report.lecturerName || '',
-        facultyName:     report.facultyName || '',
-        className:       report.className || '',
-        topic:           report.topic || '',
-        week:            report.week || '',
-        date:            report.date || '',
-        venue:           report.venue || '',
-        scheduledTime:   report.scheduledTime || '',
-        actualPresent:   report.actualPresent || 0,
-        totalRegistered: report.totalRegistered || 0,
-        status:          report.status || 'pending',
-        prlFeedback:     report.prlFeedback || '',
+        courseName:       report.courseName       || '',
+        courseCode:       report.courseCode       || '',
+        lecturerName:     report.lecturerName     || '',
+        facultyName:      report.facultyName      || '',
+        className:        report.className        || '',
+        topic:            report.topic            || '',
+        week:             report.week             || '',
+        date:             report.date             || '',
+        venue:            report.venue            || '',
+        scheduledTime:    report.scheduledTime    || '',
+        actualPresent:    report.actualPresent    || 0,
+        totalRegistered:  report.totalRegistered  || 0,
+        status:           report.status           || 'pending',
+        requiresRevision: report.requiresRevision ? 'Yes' : 'No',
+        prlFeedback:      report.prlFeedback      || '',
+        revisionNotes:    report.revisionNotes    || '',
       });
     });
 
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' }
+    // Style header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F1F3D' }
     };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Color-code status column
+    reports.forEach((report, i) => {
+      const row  = worksheet.getRow(i + 2);
+      const cell = row.getCell('status');
+      if (report.status === 'reviewed') {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFdcfce7' } };
+      } else if (report.status === 'needs_revision') {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfee2e2' } };
+      }
+    });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.xlsx');
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
-    console.error('Export error:', error);
+    console.error('Export reports error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// ─── Get reports with pagination (for PL and PRL) ───────────────────────────
-const getReportsPaginated = async (req, res) => {
+// ─── NEW: Export ratings to Excel ────────────────────────────────────────────
+const exportRatingsToExcel = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const startAfter = req.query.startAfter || null;
-    
-    let query = db.collection('lectureReports').orderBy('createdAt', 'desc');
-    
-    // If we have a cursor, start after that document
-    if (startAfter) {
-      const lastDoc = await db.collection('lectureReports').doc(startAfter).get();
-      if (lastDoc.exists) {
-        query = query.startAfter(lastDoc);
-      }
-    }
-    
-    const snapshot = await query.limit(limit).get();
-    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-    // Get total count
-    const totalSnapshot = await db.collection('lectureReports').count().get();
-    const total = totalSnapshot.data().count;
-    
-    // Get next cursor
-    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
-    const nextCursor = lastVisible ? lastVisible.id : null;
-    
-    res.json({
-      success: true,
-      reports,
-      pagination: {
-        currentPage: page,
-        limit,
-        total,
-        hasMore: reports.length === limit,
-        nextCursor
-      }
+    const snapshot = await db.collection('ratings').orderBy('createdAt', 'desc').get();
+    const ratings  = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const workbook  = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Lecturer Ratings');
+
+    worksheet.columns = [
+      { header: 'Lecturer',    key: 'lecturerName', width: 25 },
+      { header: 'Course',      key: 'courseName',   width: 30 },
+      { header: 'Course Code', key: 'courseCode',   width: 15 },
+      { header: 'Class',       key: 'className',    width: 15 },
+      { header: 'Student',     key: 'studentName',  width: 25 },
+      { header: 'Rating',      key: 'rating',       width: 10 },
+      { header: 'Comment',     key: 'comment',      width: 40 },
+      { header: 'Date',        key: 'createdAt',    width: 20 },
+    ];
+
+    ratings.forEach(r => {
+      worksheet.addRow({
+        lecturerName: r.lecturerName || '',
+        courseName:   r.courseName   || '',
+        courseCode:   r.courseCode   || '',
+        className:    r.className    || '',
+        studentName:  r.studentName  || '',
+        rating:       r.rating       || 0,
+        comment:      r.comment      || '',
+        createdAt:    r.createdAt
+          ? new Date(r.createdAt).toLocaleDateString('en-GB', {
+              day: 'numeric', month: 'short', year: 'numeric',
+            })
+          : '',
+      });
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
 
-const getPendingReportsPaginated = async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const startAfter = req.query.startAfter || null;
-    
-    let query = db.collection('lectureReports')
-      .where('status', '==', 'pending')
-      .orderBy('createdAt', 'desc');
-    
-    if (startAfter) {
-      const lastDoc = await db.collection('lectureReports').doc(startAfter).get();
-      if (lastDoc.exists) {
-        query = query.startAfter(lastDoc);
-      }
-    }
-    
-    const snapshot = await query.limit(limit).get();
-    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
-    const nextCursor = lastVisible ? lastVisible.id : null;
-    
-    res.json({
-      success: true,
-      reports,
-      hasMore: reports.length === limit,
-      nextCursor
+    // Style header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F1F3D' }
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Color-code rating column (green = 4-5, yellow = 3, red = 1-2)
+    ratings.forEach((r, i) => {
+      const cell = worksheet.getRow(i + 2).getCell('rating');
+      if (r.rating >= 4)      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFdcfce7' } };
+      else if (r.rating === 3) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfef9ec' } };
+      else                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfee2e2' } };
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
 
-const submitStructuredFeedback = async (req, res) => {
-  try {
-    const { reportId } = req.params;
-    const { 
-      feedback,
-      rating,
-      requiresRevision,
-      revisionNotes,
-      strengths,
-      improvements
-    } = req.body;
+    // Summary sheet
+    const summarySheet = workbook.addWorksheet('Summary by Lecturer');
+    summarySheet.columns = [
+      { header: 'Lecturer',    key: 'name',    width: 25 },
+      { header: 'Avg Rating',  key: 'average', width: 12 },
+      { header: 'Total Reviews', key: 'count', width: 14 },
+    ];
 
-    if (!feedback) {
-      return res.status(400).json({ success: false, error: 'Feedback is required' });
-    }
+    const lecturerMap = {};
+    ratings.forEach(r => {
+      if (!lecturerMap[r.lecturerId]) {
+        lecturerMap[r.lecturerId] = { name: r.lecturerName, total: 0, count: 0 };
+      }
+      lecturerMap[r.lecturerId].total += r.rating;
+      lecturerMap[r.lecturerId].count++;
+    });
 
-    const updateData = {
-      prlFeedback: feedback,
-      prlRating: rating || null,
-      requiresRevision: requiresRevision || false,
-      revisionNotes: revisionNotes || '',
-      strengths: strengths || '',
-      improvements: improvements || '',
-      status: requiresRevision ? 'revision_needed' : 'reviewed',
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: req.user?.uid || 'prl'
+    Object.values(lecturerMap).forEach(l => {
+      summarySheet.addRow({
+        name:    l.name,
+        average: (l.total / l.count).toFixed(1),
+        count:   l.count,
+      });
+    });
+
+    const summaryHeader = summarySheet.getRow(1);
+    summaryHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    summaryHeader.fill = {
+      type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F1F3D' }
     };
 
-    await db.collection('lectureReports').doc(reportId).update(updateData);
-
-    res.json({ 
-      success: true, 
-      message: requiresRevision ? 'Report marked for revision' : 'Feedback submitted successfully' 
-    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=lecturer_ratings.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
+    console.error('Export ratings error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 module.exports = {
   createReport,
   getReports,
   getMyReports,
-  getReportsPaginated,        
-  getPendingReportsPaginated, 
   updateReportFeedback,
+  markRequiresRevision,    // ← new
   getPendingReports,
   getReviewedReports,
   exportReportsToExcel,
-  submitStructuredFeedback   
+  exportRatingsToExcel,    // ← new
 };
