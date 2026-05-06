@@ -317,3 +317,273 @@ const exportRatingsToExcel = async (req, res) => {
   }
 };
 
+/// Add this function to your reportController.js
+const exportReportsToPDF = async (req, res) => {
+  try {
+    const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
+    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Create HTML content that can be printed as PDF
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Lecture Reports Export</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            color: #333;
+          }
+          h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 10px;
+          }
+          .date {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+          }
+          .report-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
+            background: #f9f9f9;
+          }
+          .report-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2563eb;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+          }
+          .report-section {
+            margin: 10px 0;
+          }
+          .section-label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            width: 120px;
+          }
+          .section-value {
+            color: #333;
+            display: inline-block;
+          }
+          .feedback-section {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e8f0fe;
+            border-radius: 5px;
+          }
+          .status-pending {
+            color: #f59e0b;
+            font-weight: bold;
+          }
+          .status-reviewed {
+            color: #10b981;
+            font-weight: bold;
+          }
+          .status-needs_revision {
+            color: #ef4444;
+            font-weight: bold;
+          }
+          .summary {
+            margin-top: 30px;
+            padding: 15px;
+            background: #f0f9ff;
+            border-radius: 8px;
+            margin-bottom: 30px;
+          }
+          @media print {
+            body {
+              margin: 0;
+              padding: 20px;
+            }
+            .report-card {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>📊 Lecture Reports Export</h1>
+          <p>Academic Performance Reports</p>
+        </div>
+        <div class="date">
+          Generated: ${new Date().toLocaleString()}
+        </div>
+    `;
+
+    // Add summary statistics
+    const totalReports = reports.length;
+    const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
+    const pendingReports = reports.filter(r => r.status === 'pending').length;
+    const needsRevisionReports = reports.filter(r => r.status === 'needs_revision').length;
+
+    htmlContent += `
+      <div class="summary">
+        <h3>Summary Statistics</h3>
+        <p><strong>Total Reports:</strong> ${totalReports}</p>
+        <p><strong>Reviewed Reports:</strong> ${reviewedReports}</p>
+        <p><strong>Pending Reports:</strong> ${pendingReports}</p>
+        <p><strong>Need Revision:</strong> ${needsRevisionReports}</p>
+      </div>
+      
+      <h2>Detailed Reports</h2>
+    `;
+
+    // Add each report
+    reports.forEach(report => {
+      const statusClass = report.status === 'reviewed' ? 'status-reviewed' : 
+                         report.status === 'needs_revision' ? 'status-needs_revision' : 'status-pending';
+      
+      htmlContent += `
+        <div class="report-card">
+          <div class="report-title">
+            ${escapeHtml(report.courseName || 'N/A')} (${escapeHtml(report.courseCode || 'N/A')})
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Lecturer:</span>
+            <span class="section-value">${escapeHtml(report.lecturerName || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Faculty:</span>
+            <span class="section-value">${escapeHtml(report.facultyName || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Class:</span>
+            <span class="section-value">${escapeHtml(report.className || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Topic:</span>
+            <span class="section-value">${escapeHtml(report.topic || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Week:</span>
+            <span class="section-value">${escapeHtml(report.week || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Date:</span>
+            <span class="section-value">${escapeHtml(report.date || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Venue:</span>
+            <span class="section-value">${escapeHtml(report.venue || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Time:</span>
+            <span class="section-value">${escapeHtml(report.scheduledTime || 'N/A')}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Attendance:</span>
+            <span class="section-value">${report.actualPresent || 0}/${report.totalRegistered || 0}</span>
+          </div>
+          
+          <div class="report-section">
+            <span class="section-label">Status:</span>
+            <span class="${statusClass}">${report.status || 'pending'}</span>
+          </div>
+      `;
+
+      if (report.outcomes) {
+        htmlContent += `
+          <div class="report-section">
+            <span class="section-label">Learning Outcomes:</span>
+            <div class="section-value">${escapeHtml(report.outcomes)}</div>
+          </div>
+        `;
+      }
+
+      if (report.recommendations) {
+        htmlContent += `
+          <div class="report-section">
+            <span class="section-label">Recommendations:</span>
+            <div class="section-value">${escapeHtml(report.recommendations)}</div>
+          </div>
+        `;
+      }
+
+      if (report.prlFeedback) {
+        htmlContent += `
+          <div class="feedback-section">
+            <strong>PRL Feedback:</strong><br>
+            ${escapeHtml(report.prlFeedback)}
+          </div>
+        `;
+      }
+
+      if (report.revisionNotes) {
+        htmlContent += `
+          <div class="feedback-section" style="background: #fee2e2;">
+            <strong>Revision Notes:</strong><br>
+            ${escapeHtml(report.revisionNotes)}
+          </div>
+        `;
+      }
+
+      htmlContent += `</div>`;
+    });
+
+    htmlContent += `
+      </body>
+      </html>
+    `;
+
+    // Send as HTML file that can be printed to PDF
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.html');
+    res.send(htmlContent);
+    
+  } catch (error) {
+    console.error('Export PDF error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Helper function to escape HTML special characters
+function escapeHtml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Update module.exports at the bottom of your file
+module.exports = {
+  createReport,
+  getReports,
+  getMyReports,
+  updateReportFeedback,
+  markRequiresRevision,
+  getPendingReports,
+  getReviewedReports,
+  exportReportsToExcel,
+  exportReportsToPDF,  // Add this line
+  exportRatingsToExcel,
+};
