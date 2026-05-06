@@ -67,84 +67,32 @@ const getReports = async (req, res) => {
 };
 
 // ─── Get THIS lecturer's own reports only ────────────────────────────────────
-// Create report - with duplicate check
-const createReport = async (req, res) => {
+const getMyReports = async (req, res) => {
   try {
-    const {
-      facultyName, className, week, date, courseName, courseCode,
-      classId, lecturerName, actualPresent, totalRegistered, venue,
-      scheduledTime, topic, outcomes, recommendations
-    } = req.body;
-
     const lecturerId = req.headers['x-user-id'];
+    if (!lecturerId) return res.json({ success: true, reports: [] });
 
-    if (!lecturerId) {
-      return res.status(400).json({ success: false, error: 'Lecturer ID required' });
-    }
-    if (!topic || !actualPresent) {
-      return res.status(400).json({ success: false, error: 'Missing required fields' });
-    }
+    const snapshot = await db.collection('lectureReports')
+      .where('lecturerId', '==', lecturerId)
+      .orderBy('createdAt', 'desc')
+      .get();
 
-    // ✅ CHECK FOR DUPLICATE WEEK REPORT
-    if (week && classId) {
-      const existingSnap = await db.collection('lectureReports')
-        .where('lecturerId', '==', lecturerId)
-        .where('classId', '==', classId)
-        .where('week', '==', Number(week))
-        .get();
-
-      if (!existingSnap.empty) {
-        return res.status(409).json({ 
-          success: false, 
-          error: `You have already submitted a report for Week ${week}. Please edit the existing report instead.`,
-          existingReportId: existingSnap.docs[0].id
-        });
-      }
-    }
-
-    const reportData = {
-      facultyName: facultyName || '',
-      className: className || '',
-      week: week ? Number(week) : null,
-      date: date || new Date().toISOString().split('T')[0],
-      courseName,
-      courseCode,
-      classId: classId || '',
-      lecturerId,
-      lecturerName: lecturerName || '',
-      actualPresent: Number(actualPresent),
-      totalRegistered: totalRegistered ? Number(totalRegistered) : 0,
-      venue: venue || '',
-      scheduledTime: scheduledTime || '',
-      topic,
-      outcomes: outcomes || '',
-      recommendations: recommendations || '',
-      status: 'pending',
-      prlFeedback: '',
-      createdAt: new Date().toISOString()
-    };
-
-    const docRef = await db.collection('lectureReports').add(reportData);
-
-    res.status(201).json({
-      success: true,
-      message: 'Report submitted successfully',
-      reportId: docRef.id
-    });
+    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json({ success: true, reports });
   } catch (error) {
-    console.error('Create report error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 // ─── PRL: add structured feedback to a report ────────────────────────────────
 const updateReportFeedback = async (req, res) => {
   try {
     const { reportId } = req.params;
     const {
       prlFeedback,
-      feedbackType,      // 'approved' | 'needs_revision' | 'excellent'
-      requiresRevision,  // boolean
-      revisionNotes,     // string — what specifically needs fixing
+      feedbackType,
+      requiresRevision,
+      revisionNotes,
     } = req.body;
 
     if (!prlFeedback) {
@@ -168,7 +116,7 @@ const updateReportFeedback = async (req, res) => {
   }
 };
 
-// ─── NEW: PRL — mark report as requiring revision ────────────────────────────
+// ─── PRL — mark report as requiring revision ────────────────────────────────
 const markRequiresRevision = async (req, res) => {
   try {
     const { reportId } = req.params;
@@ -268,24 +216,12 @@ const exportReportsToExcel = async (req, res) => {
       });
     });
 
-    // Style header row
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = {
       type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F1F3D' }
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-
-    // Color-code status column
-    reports.forEach((report, i) => {
-      const row  = worksheet.getRow(i + 2);
-      const cell = row.getCell('status');
-      if (report.status === 'reviewed') {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFdcfce7' } };
-      } else if (report.status === 'needs_revision') {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfee2e2' } };
-      }
-    });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.xlsx');
@@ -297,7 +233,7 @@ const exportReportsToExcel = async (req, res) => {
   }
 };
 
-// ─── NEW: Export ratings to Excel ────────────────────────────────────────────
+// ─── Export ratings to Excel ────────────────────────────────────────────
 const exportRatingsToExcel = async (req, res) => {
   try {
     const snapshot = await db.collection('ratings').orderBy('createdAt', 'desc').get();
@@ -334,7 +270,6 @@ const exportRatingsToExcel = async (req, res) => {
       });
     });
 
-    // Style header row
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = {
@@ -342,15 +277,6 @@ const exportRatingsToExcel = async (req, res) => {
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    // Color-code rating column (green = 4-5, yellow = 3, red = 1-2)
-    ratings.forEach((r, i) => {
-      const cell = worksheet.getRow(i + 2).getCell('rating');
-      if (r.rating >= 4)      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFdcfce7' } };
-      else if (r.rating === 3) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfef9ec' } };
-      else                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfee2e2' } };
-    });
-
-    // Summary sheet
     const summarySheet = workbook.addWorksheet('Summary by Lecturer');
     summarySheet.columns = [
       { header: 'Lecturer',    key: 'name',    width: 25 },
@@ -396,9 +322,9 @@ module.exports = {
   getReports,
   getMyReports,
   updateReportFeedback,
-  markRequiresRevision,    // ← new
+  markRequiresRevision,
   getPendingReports,
   getReviewedReports,
   exportReportsToExcel,
-  exportRatingsToExcel,    // ← new
+  exportRatingsToExcel,
 };
