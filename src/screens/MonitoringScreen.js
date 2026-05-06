@@ -1,49 +1,31 @@
 import React, { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  ActivityIndicator,
-  SafeAreaView,
-  StatusBar,
+  View, Text, ScrollView, StyleSheet,
+  ActivityIndicator, SafeAreaView, StatusBar,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../services/api";
 
 const C = {
-  navy:    "#0f1f3d",
-  gold:    "#c9a84c",
-  white:   "#ffffff",
-  bg:      "#f5f7fb",
-  card:    "#ffffff",
-  border:  "#e4e8f0",
-  text:    "#102040",
-  muted:   "#6c7a96",
-  empty:   "#f0f4ff",
-  green:   "#16a34a",  greenBg: "#dcfce7",
-  red:     "#dc2626",  redBg:   "#fee2e2",
-  amber:   "#d97706",  amberBg: "#fef3c7",
+  navy:"#0f1f3d", gold:"#c9a84c", white:"#ffffff",
+  bg:"#f5f7fb", card:"#ffffff", border:"#e4e8f0",
+  text:"#102040", muted:"#6c7a96", empty:"#f0f4ff",
+  green:"#16a34a", greenBg:"#dcfce7",
+  red:"#dc2626",   redBg:"#fee2e2",
+  amber:"#d97706", amberBg:"#fef3c7",
 };
 
 const fmtDate = (str) => {
   if (!str) return "";
   const d = new Date(str);
-  return isNaN(d) ? str : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return isNaN(d) ? str : d.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" });
 };
 
 const pct = (a, b) => (!b ? 0 : Math.round((a / b) * 100));
 
-function SectionLabel({ text }) {
-  return <Text style={s.sectionLabel}>{text}</Text>;
-}
-
-function StatStrip({ children }) {
-  return <View style={s.statStrip}>{children}</View>;
-}
-
+function SectionLabel({ text }) { return <Text style={s.sectionLabel}>{text}</Text>; }
+function StatStrip({ children }) { return <View style={s.statStrip}>{children}</View>; }
 function Div() { return <View style={s.statDivider} />; }
-
 function Stat({ label, value, color }) {
   return (
     <View style={s.statItem}>
@@ -57,14 +39,12 @@ function AttRow({ item }) {
   const present = item.status === "Present";
   return (
     <View style={s.row}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex:1 }}>
         <Text style={s.rowTitle}>{item.courseName || "Class"}</Text>
         <Text style={s.rowMeta}>{fmtDate(item.date)}</Text>
       </View>
       <View style={[s.pill, { backgroundColor: present ? C.greenBg : C.redBg }]}>
-        <Text style={[s.pillText, { color: present ? C.green : C.red }]}>
-          {item.status}
-        </Text>
+        <Text style={[s.pillText, { color: present ? C.green : C.red }]}>{item.status}</Text>
       </View>
     </View>
   );
@@ -76,13 +56,30 @@ function ReportRow({ item }) {
   const bg  = p >= 75 ? C.greenBg : p >= 50 ? C.amberBg : C.redBg;
   return (
     <View style={s.row}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex:1 }}>
         <Text style={s.rowTitle} numberOfLines={1}>{item.topic || item.courseName}</Text>
         <Text style={s.rowMeta}>{item.lecturerName}  •  {item.courseCode}</Text>
         <Text style={s.rowMeta}>{fmtDate(item.date || item.createdAt)}{item.week ? `  •  Week ${item.week}` : ""}</Text>
       </View>
       <View style={[s.pill, { backgroundColor: bg }]}>
         <Text style={[s.pillText, { color: col }]}>{p}%</Text>
+      </View>
+    </View>
+  );
+}
+
+// ✅ Student row for lecturer's students section
+function StudentRow({ item }) {
+  const initials = (item.username || item.email || "S")
+    .split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  return (
+    <View style={s.studentRow}>
+      <View style={s.avatar}>
+        <Text style={s.avatarText}>{initials}</Text>
+      </View>
+      <View style={{ flex:1 }}>
+        <Text style={s.studentName}>{item.username || "Unknown"}</Text>
+        <Text style={s.studentEmail}>{item.email}</Text>
       </View>
     </View>
   );
@@ -97,11 +94,11 @@ function EmptyState({ title, subtitle }) {
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function MonitoringScreen() {
   const [role, setRole]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState({});
+  const [studentsByCourse, setStudentsByCourse] = useState({});
 
   useEffect(() => {
     const load = async () => {
@@ -115,7 +112,22 @@ export default function MonitoringScreen() {
 
         } else if (userRole === "lecturer") {
           const res = await api.get("/monitoring/lecturer");
-          if (res.data.success) setData(res.data);
+          if (res.data.success) {
+            setData(res.data);
+
+            // ✅ Fetch students for each course
+            const courses = res.data.courses || [];
+            const results = await Promise.all(
+              courses.map(course =>
+                api.get(`/attendance/course/${course.id}/students`)
+                  .then(r => ({ courseId: course.id, courseName: course.courseName, students: r.data.success ? r.data.students : [] }))
+                  .catch(() => ({ courseId: course.id, courseName: course.courseName, students: [] }))
+              )
+            );
+            const map = {};
+            results.forEach(r => { map[r.courseId] = { courseName: r.courseName, students: r.students }; });
+            setStudentsByCourse(map);
+          }
 
         } else if (userRole === "prl") {
           const res = await api.get("/monitoring/prl");
@@ -142,10 +154,9 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ─── STUDENT ────────────────────────────────────────────────────────────────
+  // ─── STUDENT ──────────────────────────────────────────────────────────────
   if (role === "student") {
     const { attendance = [], reports = [], stats = {}, assigned } = data;
-
     const attColor = (stats.attendancePercent ?? 0) >= 75 ? C.green
                    : (stats.attendancePercent ?? 0) >= 50 ? C.amber : C.red;
 
@@ -157,15 +168,9 @@ export default function MonitoringScreen() {
           <Text style={s.headerTitle}>My Monitoring</Text>
           <Text style={s.headerSub}>Track your attendance and performance</Text>
         </View>
-
         <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-
-          {/* ✅ assigned flag from backend — not guessed from empty arrays */}
           {assigned === false ? (
-            <EmptyState
-              title="Not Assigned Yet"
-              subtitle="You haven't been assigned to a class yet. Contact your programme leader to get enrolled."
-            />
+            <EmptyState title="Not Assigned Yet" subtitle="You haven't been assigned to a class yet." />
           ) : (
             <>
               <StatStrip>
@@ -177,17 +182,12 @@ export default function MonitoringScreen() {
                 <Div />
                 <Stat label="Total"   value={stats.total ?? 0} />
               </StatStrip>
-
               <SectionLabel text="Attendance Records" />
               {attendance.length === 0 ? (
-                <EmptyState
-                  title="No Records Yet"
-                  subtitle="Your attendance will appear here once your class starts."
-                />
+                <EmptyState title="No Records Yet" subtitle="Your attendance will appear here once your class starts." />
               ) : (
                 attendance.map(item => <AttRow key={item.id} item={item} />)
               )}
-
               {reports.length > 0 && (
                 <>
                   <SectionLabel text="Class Lecture History" />
@@ -196,17 +196,22 @@ export default function MonitoringScreen() {
               )}
             </>
           )}
-
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // ─── LECTURER ───────────────────────────────────────────────────────────────
+  // ─── LECTURER ─────────────────────────────────────────────────────────────
   if (role === "lecturer") {
     const { reports = [], courses = [], stats = {} } = data;
     const attColor = (stats.attendancePercent ?? 0) >= 75 ? C.green
                    : (stats.attendancePercent ?? 0) >= 50 ? C.amber : C.red;
+
+    // Count total unique students
+    const allStudentIds = new Set();
+    Object.values(studentsByCourse).forEach(({ students }) => {
+      students.forEach(st => allStudentIds.add(st.id));
+    });
 
     return (
       <SafeAreaView style={s.screen}>
@@ -214,24 +219,52 @@ export default function MonitoringScreen() {
         <View style={s.header}>
           <Text style={s.eyebrow}>Lecturer Portal</Text>
           <Text style={s.headerTitle}>My Monitoring</Text>
-          <Text style={s.headerSub}>Your reports and class performance</Text>
+          <Text style={s.headerSub}>Your reports, students and performance</Text>
         </View>
 
         <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
           <StatStrip>
-            <Stat label="Reports"        value={stats.totalReports ?? 0} />
+            <Stat label="Reports"   value={stats.totalReports ?? 0} />
             <Div />
-            <Stat label="Courses"        value={stats.totalCourses ?? 0} />
+            <Stat label="Courses"   value={stats.totalCourses ?? 0} />
             <Div />
-            <Stat label="Avg Attendance" value={`${stats.attendancePercent ?? 0}%`} color={attColor} />
+            <Stat label="Students"  value={allStudentIds.size} />
+            <Div />
+            <Stat label="Attendance" value={`${stats.attendancePercent ?? 0}%`} color={attColor} />
           </StatStrip>
 
+          {/* ✅ Students per course */}
+          <SectionLabel text="My Students" />
+          {courses.length === 0 ? (
+            <EmptyState title="No Courses Assigned" subtitle="Students will appear once courses are assigned to you." />
+          ) : (
+            courses.map(course => {
+              const entry    = studentsByCourse[course.id];
+              const students = entry?.students || [];
+              return (
+                <View key={course.id} style={s.courseBlock}>
+                  <View style={s.courseBlockHeader}>
+                    <Text style={s.courseBlockName}>{course.courseName}</Text>
+                    <View style={s.countBadge}>
+                      <Text style={s.countBadgeText}>{students.length} students</Text>
+                    </View>
+                  </View>
+                  {students.length === 0 ? (
+                    <View style={s.courseBlockEmpty}>
+                      <Text style={s.courseBlockEmptyText}>No students assigned to this class yet</Text>
+                    </View>
+                  ) : (
+                    students.map(item => <StudentRow key={item.id} item={item} />)
+                  )}
+                </View>
+              );
+            })
+          )}
+
+          {/* Reports */}
           <SectionLabel text="Your Recent Reports" />
           {reports.length === 0 ? (
-            <EmptyState
-              title="No Reports Yet"
-              subtitle="Reports you submit will appear here."
-            />
+            <EmptyState title="No Reports Yet" subtitle="Reports you submit will appear here." />
           ) : (
             reports.map(item => <ReportRow key={item.id} item={item} />)
           )}
@@ -240,10 +273,9 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ─── PRL ────────────────────────────────────────────────────────────────────
+  // ─── PRL ──────────────────────────────────────────────────────────────────
   if (role === "prl") {
     const { pending = [], stats = {} } = data;
-
     return (
       <SafeAreaView style={s.screen}>
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
@@ -252,7 +284,6 @@ export default function MonitoringScreen() {
           <Text style={s.headerTitle}>Academic Monitoring</Text>
           <Text style={s.headerSub}>Review lecturer reports and provide feedback</Text>
         </View>
-
         <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
           <StatStrip>
             <Stat label="Total"    value={stats.total ?? 0} />
@@ -261,7 +292,6 @@ export default function MonitoringScreen() {
             <Div />
             <Stat label="Reviewed" value={stats.reviewed ?? 0} color={C.green} />
           </StatStrip>
-
           <SectionLabel text="Pending Reports" />
           {pending.length === 0 ? (
             <EmptyState title="All Caught Up" subtitle="No reports are pending review." />
@@ -273,12 +303,11 @@ export default function MonitoringScreen() {
     );
   }
 
-  // ─── PL ─────────────────────────────────────────────────────────────────────
+  // ─── PL ───────────────────────────────────────────────────────────────────
   if (role === "pl") {
     const { reports = [], stats = {} } = data;
     const attColor = (stats.attendancePercent ?? 0) >= 75 ? C.green
                    : (stats.attendancePercent ?? 0) >= 50 ? C.amber : C.red;
-
     return (
       <SafeAreaView style={s.screen}>
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
@@ -287,7 +316,6 @@ export default function MonitoringScreen() {
           <Text style={s.headerTitle}>System Monitoring</Text>
           <Text style={s.headerSub}>Complete academic performance overview</Text>
         </View>
-
         <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
           <StatStrip>
             <Stat label="Reports"  value={stats.totalReports ?? 0} />
@@ -296,7 +324,6 @@ export default function MonitoringScreen() {
             <Div />
             <Stat label="Reviewed" value={stats.reviewed ?? 0} color={C.green} />
           </StatStrip>
-
           <StatStrip>
             <Stat label="Courses"    value={stats.totalCourses ?? 0} />
             <Div />
@@ -306,7 +333,6 @@ export default function MonitoringScreen() {
             <Div />
             <Stat label="Attendance" value={`${stats.attendancePercent ?? 0}%`} color={attColor} />
           </StatStrip>
-
           <SectionLabel text="Recent Reports" />
           {reports.length === 0 ? (
             <EmptyState title="No Reports Yet" subtitle="Submitted reports will appear here." />
@@ -322,51 +348,48 @@ export default function MonitoringScreen() {
 }
 
 const s = StyleSheet.create({
-  screen:   { flex: 1, backgroundColor: C.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
+  screen:   { flex:1, backgroundColor:C.bg },
+  centered: { flex:1, justifyContent:"center", alignItems:"center", backgroundColor:C.bg },
 
-  header: {
-    backgroundColor: C.navy,
-    paddingTop: 52, paddingBottom: 24, paddingHorizontal: 24,
-  },
-  eyebrow: {
-    fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
-    color: C.gold, textTransform: "uppercase", marginBottom: 6,
-  },
-  headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
-  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)" },
+  header: { backgroundColor:C.navy, paddingTop:52, paddingBottom:24, paddingHorizontal:24 },
+  eyebrow: { fontSize:11, fontWeight:"600", letterSpacing:1.2, color:C.gold, textTransform:"uppercase", marginBottom:6 },
+  headerTitle: { fontSize:26, fontWeight:"700", color:C.white, marginBottom:4 },
+  headerSub:   { fontSize:13, color:"rgba(255,255,255,0.5)" },
 
-  body: { padding: 16, paddingBottom: 40 },
+  body: { padding:16, paddingBottom:40 },
 
-  sectionLabel: {
-    fontSize: 11, fontWeight: "600", letterSpacing: 1,
-    color: C.muted, textTransform: "uppercase", marginTop: 20, marginBottom: 10,
-  },
+  sectionLabel: { fontSize:11, fontWeight:"600", letterSpacing:1, color:C.muted, textTransform:"uppercase", marginTop:20, marginBottom:10 },
 
-  statStrip: {
-    flexDirection: "row", backgroundColor: C.navy,
-    borderRadius: 12, paddingVertical: 16, marginBottom: 12,
-  },
-  statItem:    { flex: 1, alignItems: "center" },
-  statNum:     { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
-  statMeta:    { fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
-  statDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 4 },
+  statStrip:   { flexDirection:"row", backgroundColor:C.navy, borderRadius:12, paddingVertical:16, marginBottom:12 },
+  statItem:    { flex:1, alignItems:"center" },
+  statNum:     { fontSize:22, fontWeight:"700", color:C.white, marginBottom:2 },
+  statMeta:    { fontSize:10, color:"rgba(255,255,255,0.4)", textTransform:"uppercase", letterSpacing:0.5 },
+  statDivider: { width:1, backgroundColor:"rgba(255,255,255,0.1)", marginVertical:4 },
 
-  row: {
-    backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
-    borderColor: C.border, padding: 14, flexDirection: "row",
-    alignItems: "center", marginBottom: 8,
-  },
-  rowTitle: { fontSize: 14, fontWeight: "600", color: C.text, marginBottom: 3 },
-  rowMeta:  { fontSize: 12, color: C.muted, marginBottom: 1 },
+  row: { backgroundColor:C.card, borderRadius:12, borderWidth:1, borderColor:C.border, padding:14, flexDirection:"row", alignItems:"center", marginBottom:8 },
+  rowTitle: { fontSize:14, fontWeight:"600", color:C.text, marginBottom:3 },
+  rowMeta:  { fontSize:12, color:C.muted, marginBottom:1 },
 
-  pill: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, marginLeft: 10, flexShrink: 0 },
-  pillText: { fontSize: 12, fontWeight: "700" },
+  pill:     { borderRadius:20, paddingHorizontal:12, paddingVertical:5, marginLeft:10, flexShrink:0 },
+  pillText: { fontSize:12, fontWeight:"700" },
 
-  emptyCard: {
-    backgroundColor: C.empty, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 28, alignItems: "center", marginBottom: 10,
-  },
-  emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
-  emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
+  // ✅ Course block for students
+  courseBlock: { backgroundColor:C.card, borderWidth:1, borderColor:C.border, borderRadius:12, marginBottom:12, overflow:"hidden" },
+  courseBlockHeader: { flexDirection:"row", alignItems:"center", justifyContent:"space-between", padding:14, borderBottomWidth:1, borderBottomColor:C.border },
+  courseBlockName: { fontSize:14, fontWeight:"700", color:C.text, flex:1 },
+  countBadge: { backgroundColor:"#edf0f7", borderRadius:20, paddingHorizontal:10, paddingVertical:4 },
+  countBadgeText: { fontSize:11, fontWeight:"600", color:C.navy },
+  courseBlockEmpty: { padding:14 },
+  courseBlockEmptyText: { fontSize:12, color:C.muted, textAlign:"center" },
+
+  // ✅ Student row
+  studentRow: { flexDirection:"row", alignItems:"center", paddingHorizontal:14, paddingVertical:12, borderBottomWidth:1, borderBottomColor:C.border, gap:10 },
+  avatar: { width:34, height:34, borderRadius:17, backgroundColor:"#edf0f7", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  avatarText: { fontSize:12, fontWeight:"700", color:C.navy },
+  studentName: { fontSize:13, fontWeight:"600", color:C.text, marginBottom:1 },
+  studentEmail: { fontSize:11, color:C.muted },
+
+  emptyCard: { backgroundColor:C.empty, borderWidth:1, borderColor:C.border, borderRadius:12, padding:28, alignItems:"center", marginBottom:10 },
+  emptyTitle: { fontSize:15, fontWeight:"700", color:C.text, marginBottom:6, textAlign:"center" },
+  emptySubtitle: { fontSize:13, color:C.muted, textAlign:"center", lineHeight:20 },
 });

@@ -1,5 +1,5 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 
 const {
   getClasses,
@@ -13,19 +13,25 @@ const {
   getClassById,
 } = require('../controllers/classController');
 
-// Static/named routes FIRST
-router.get('/mine', getLecturerClasses);
-router.post('/assign', assignStudent);
-router.delete('/students/:studentId', unassignStudent);  // DELETE method
+// ── Specific routes first (before /:classId to avoid conflicts) ───────────────
+router.get('/mine',              getLecturerClasses); // lecturer only
+router.post('/assign',           assignStudent);      // assign student to class
 
-// Base routes
-router.get('/', getClasses);
-router.post('/', createClass);
+// ✅ Unassign student — DELETE /classes/students/:studentId
+router.delete('/students/:studentId', unassignStudent);
 
-// Param routes LAST
-router.get('/:classId/students', getClassStudents);
-router.put('/:classId', updateClass);
-router.delete('/:classId', deleteClass);
-router.get('/:classId', getClassById);
+// ── Class CRUD ────────────────────────────────────────────────────────────────
+router.get('/',                  getClasses);         // PL — all classes
+router.post('/',                 createClass);        // PL — create class
+
+// ✅ Edit class — PUT /classes/:classId
+router.put('/:classId',          updateClass);
+
+// ✅ Delete class — DELETE /classes/:classId
+router.delete('/:classId',       deleteClass);
+
+// ── Other ─────────────────────────────────────────────────────────────────────
+router.get('/:classId/students', getClassStudents);   // PL — students for a class
+router.get('/:classId',          getClassById);       // student — own class only
 
 module.exports = router;

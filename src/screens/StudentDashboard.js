@@ -9,6 +9,7 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../services/api";
@@ -28,24 +29,8 @@ const C = {
   empty:  "#f0f4ff",
 };
 
-const DAY_COLORS = {
-  Monday:    "#e0f2fe",
-  Tuesday:   "#fce7f3",
-  Wednesday: "#dcfce7",
-  Thursday:  "#fef3c7",
-  Friday:    "#ede9fe",
-  Saturday:  "#fee2e2",
-  Sunday:    "#f1f5f9",
-};
-const DAY_TEXT = {
-  Monday:    "#0369a1",
-  Tuesday:   "#9d174d",
-  Wednesday: "#15803d",
-  Thursday:  "#92400e",
-  Friday:    "#6d28d9",
-  Saturday:  "#b91c1c",
-  Sunday:    "#475569",
-};
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const TIME_SLOTS = ["08:30", "10:30", "12:30", "14:30"];
 
 function NavCard({ title, subtitle, route, navigation }) {
   return (
@@ -63,37 +48,116 @@ function NavCard({ title, subtitle, route, navigation }) {
   );
 }
 
-// ✅ Single timetable row
-function TimetableRow({ item }) {
-  const dayBg   = DAY_COLORS[item.day] || C.badge;
-  const dayText = DAY_TEXT[item.day]   || C.muted;
+
+function TimetableModal({ visible, onClose, timetable, loading }) {
+  // Get ALL courses 
+  const getCoursesAtTimeSlot = (day, timeSlot) => {
+   
+    const coursesForDay = timetable.filter(c => 
+      c.day && c.day.toLowerCase() === day.toLowerCase()
+    );
+    
+    if (coursesForDay.length === 0) return [];
+    
+
+    const matchedCourses = coursesForDay.filter(course => {
+      let courseStartTime = course.time;
+      if (courseStartTime && courseStartTime.includes("-")) {
+        courseStartTime = courseStartTime.split("-")[0].trim();
+      }
+      return courseStartTime === timeSlot;
+    });
+    
+    return matchedCourses;
+  };
+
   return (
-    <View style={s.timetableRow}>
-      <View style={[s.dayBadge, { backgroundColor: dayBg }]}>
-        <Text style={[s.dayText, { color: dayText }]}>
-          {(item.day || "").slice(0, 3).toUpperCase()}
-        </Text>
-      </View>
-      <View style={s.timetableBody}>
-        <Text style={s.timetableCourse}>{item.courseName}</Text>
-        <Text style={s.timetableMeta}>
-          {[item.time, item.venue].filter(Boolean).join("  •  ")}
-        </Text>
-        {!!item.lecturerName && (
-          <Text style={s.timetableLecturer}>👤 {item.lecturerName}</Text>
-        )}
-      </View>
-      <View style={s.codeBadge}>
-        <Text style={s.codeBadgeText}>{item.courseCode}</Text>
-      </View>
-    </View>
+    <Modal visible={visible} animationType="slide" transparent={false}>
+      <SafeAreaView style={s.modalContainer}>
+        <View style={s.modalHeader}>
+          <Text style={s.modalTitle}>My Timetable</Text>
+          <TouchableOpacity onPress={onClose} style={s.closeModalBtn}>
+            <Text style={s.closeModalBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+          {loading ? (
+            <View style={s.modalLoading}>
+              <ActivityIndicator size="large" color={C.navy} />
+              <Text style={s.modalLoadingText}>Loading timetable...</Text>
+            </View>
+          ) : timetable.length === 0 ? (
+            <View style={s.modalEmpty}>
+              <Text style={s.modalEmptyIcon}>🗓</Text>
+              <Text style={s.modalEmptyTitle}>No Timetable Yet</Text>
+              <Text style={s.modalEmptySubtitle}>
+                Your courses will appear here once your programme leader adds them.
+              </Text>
+            </View>
+          ) : (
+            <View style={s.tableContainer}>
+              {/* Header Row */}
+              <View style={s.tableHeaderRow}>
+                <View style={[s.tableHeaderCell, s.timeColumnHeader]}>
+                  <Text style={s.tableHeaderText}>Time</Text>
+                </View>
+                {DAYS.map(day => (
+                  <View key={day} style={s.tableHeaderCell}>
+                    <Text style={s.tableHeaderText}>{day.slice(0, 3)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Time Slot Rows */}
+              {TIME_SLOTS.map(timeSlot => {
+                const endTime = timeSlot === "08:30" ? "10:30" :
+                               timeSlot === "10:30" ? "12:30" :
+                               timeSlot === "12:30" ? "14:30" : "16:30";
+                
+                return (
+                  <View key={timeSlot} style={s.tableRow}>
+                    <View style={[s.tableCell, s.timeColumnCell]}>
+                      <Text style={s.timeText}>{timeSlot} - {endTime}</Text>
+                    </View>
+                    {DAYS.map(day => {
+                      const courses = getCoursesAtTimeSlot(day, timeSlot);
+                      const hasCourses = courses.length > 0;
+                      return (
+                        <View key={day} style={[s.tableCell, hasCourses && s.hasCourse]}>
+                          {hasCourses ? (
+                            <View style={s.courseCell}>
+                              {courses.map((course, idx) => (
+                                <View key={idx} style={s.courseItem}>
+                                  <Text style={s.courseCodeText}>{course.courseCode}</Text>
+                                  <Text style={s.courseNameText}>{course.courseName}</Text>
+                                  <Text style={s.venueText}> {course.venue}</Text>
+                                  <Text style={s.lecturerText}> {course.lecturerName}</Text>
+                                  {idx < courses.length - 1 && <View style={s.courseDivider} />}
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text style={s.emptyCellText}>-</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
 function EmptyClassCard() {
   return (
     <View style={s.emptyCard}>
-      <Text style={s.emptyIcon}>📋</Text>
+      <Text style={s.emptyIcon}></Text>
       <Text style={s.emptyTitle}>Not Assigned Yet</Text>
       <Text style={s.emptySubtitle}>
         Your program leader hasn't assigned you to a class yet.
@@ -102,28 +166,17 @@ function EmptyClassCard() {
   );
 }
 
-function EmptyTimetable() {
-  return (
-    <View style={s.emptyCard}>
-      <Text style={s.emptyIcon}>🗓</Text>
-      <Text style={s.emptyTitle}>No Timetable Yet</Text>
-      <Text style={s.emptySubtitle}>
-        Your courses will appear here once your programme leader adds them.
-      </Text>
-    </View>
-  );
-}
-
 export default function StudentDashboard({ navigation }) {
-  const [loading, setLoading]                 = useState(false);
-  const [statsLoading, setStatsLoading]       = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [timetableLoading, setTimetableLoading] = useState(true);
   const [attendancePercent, setAttendancePercent] = useState(0);
-  const [ratingsCount, setRatingsCount]       = useState(0);
-  const [timetable, setTimetable]             = useState([]);
-  const [studentName, setStudentName]         = useState("");
-  const [studentClass, setStudentClass]       = useState("");
-  const [isAssigned, setIsAssigned]           = useState(false);
+  const [ratingsCount, setRatingsCount] = useState(0);
+  const [timetable, setTimetable] = useState([]);
+  const [studentName, setStudentName] = useState("");
+  const [studentClass, setStudentClass] = useState("");
+  const [isAssigned, setIsAssigned] = useState(false);
+  const [timetableModalVisible, setTimetableModalVisible] = useState(false);
 
   const getStudentData = async () => {
     const userData = await AsyncStorage.getItem("user_data");
@@ -148,10 +201,11 @@ export default function StudentDashboard({ navigation }) {
     }
   };
 
-  // ✅ Fetch full timetable instead of just upcoming-class
   const fetchTimetable = async () => {
+    setTimetableLoading(true);
     try {
       const response = await api.get("/student/timetable");
+      console.log("Timetable response:", response.data);
       if (response.data.success) {
         setTimetable(response.data.timetable || []);
       }
@@ -198,9 +252,16 @@ export default function StudentDashboard({ navigation }) {
     <SafeAreaView style={s.screen}>
       <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      {/* Timetable  */}
+      <TimetableModal
+        visible={timetableModalVisible}
+        onClose={() => setTimetableModalVisible(false)}
+        timetable={timetable}
+        loading={timetableLoading}
+      />
 
-        {/* ── Header ── */}
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header */}
         <View style={s.header}>
           <Text style={s.eyebrow}>Student</Text>
           <Text style={s.headerTitle}>{studentName || "Dashboard"}</Text>
@@ -215,38 +276,34 @@ export default function StudentDashboard({ navigation }) {
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? ratingsCount : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? ratingsCount : ""}</Text>
               <Text style={s.statMeta}>Ratings</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? timetable.length : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? timetable.length : ""}</Text>
               <Text style={s.statMeta}>Courses</Text>
             </View>
           </View>
         </View>
 
         <View style={s.body}>
-
-          {/* ✅ Timetable section */}
-          <Text style={s.sectionLabel}>My Timetable</Text>
-
-          {!isAssigned ? (
-            <EmptyClassCard />
-          ) : timetableLoading ? (
-            <View style={s.loadingCard}>
-              <ActivityIndicator size="small" color={C.navy} />
-            </View>
-          ) : timetable.length === 0 ? (
-            <EmptyTimetable />
-          ) : (
-            timetable.map(item => (
-              <TimetableRow key={item.id} item={item} />
-            ))
-          )}
-
-          {/* ── Academic nav ── */}
+      
           <Text style={s.sectionLabel}>Academic</Text>
+
+          {/* Timetable*/}
+          <TouchableOpacity
+            style={s.timetableNavCard}
+            onPress={() => setTimetableModalVisible(true)}
+            activeOpacity={0.75}
+          >
+            <View style={s.timetableNavLeft}>
+              <View>
+                <Text style={s.timetableNavTitle}>Timetable</Text>
+              </View>
+            </View>
+            <Text style={s.timetableNavArrow}>›</Text>
+          </TouchableOpacity>
 
           <NavCard
             title="View Attendance"
@@ -273,7 +330,7 @@ export default function StudentDashboard({ navigation }) {
             navigation={navigation}
           />
 
-          {/* ── Sign out ── */}
+        
           <TouchableOpacity
             style={[s.logoutBtn, loading && { opacity: 0.6 }]}
             onPress={logout}
@@ -285,7 +342,6 @@ export default function StudentDashboard({ navigation }) {
             </Text>
             <Text style={s.logoutArrow}>›</Text>
           </TouchableOpacity>
-
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -299,80 +355,157 @@ const s = StyleSheet.create({
 
   header: {
     backgroundColor: C.navy,
-    paddingTop: 52, paddingHorizontal: 24, paddingBottom: 0,
+    paddingTop: 52,
+    paddingHorizontal: 24,
+    paddingBottom: 0,
   },
   eyebrow: {
-    fontSize: 11, fontWeight: "600", letterSpacing: 1.2,
-    color: C.gold, textTransform: "uppercase", marginBottom: 6,
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    color: C.gold,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
   headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
-  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 28 },
+  headerSub: { fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 28 },
 
-  statStrip:   { flexDirection: "row", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)", paddingVertical: 16 },
-  statItem:    { flex: 1, alignItems: "center" },
-  statNum:     { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
-  statMeta:    { fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
+  statStrip: { flexDirection: "row", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)", paddingVertical: 16 },
+  statItem: { flex: 1, alignItems: "center" },
+  statNum: { fontSize: 22, fontWeight: "700", color: C.white, marginBottom: 2 },
+  statMeta: { fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 0.5 },
   statDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 4 },
 
   body: { padding: 16, paddingBottom: 48 },
 
   sectionLabel: {
-    fontSize: 11, fontWeight: "600", letterSpacing: 1,
-    color: C.muted, textTransform: "uppercase", marginBottom: 10, marginTop: 4,
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1,
+    color: C.muted,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    marginTop: 4,
   },
 
-  loadingCard: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 20, marginBottom: 16, alignItems: "center",
+  timetableNavCard: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
+  timetableNavLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  timetableNavIcon: { fontSize: 28 },
+  timetableNavTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 2 },
+  timetableNavSub: { fontSize: 12, color: C.muted },
+  timetableNavArrow: { fontSize: 22, color: C.muted },
 
-  // ✅ Timetable row
-  timetableRow: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 14, marginBottom: 8,
-    flexDirection: "row", alignItems: "center", gap: 12,
+  modalContainer: { flex: 1, backgroundColor: C.bg },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    backgroundColor: C.navy,
+    paddingTop: 52,
   },
-  dayBadge: {
-    width: 44, height: 44, borderRadius: 10,
-    alignItems: "center", justifyContent: "center", flexShrink: 0,
-  },
-  dayText:          { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  timetableBody:    { flex: 1 },
-  timetableCourse:  { fontSize: 14, fontWeight: "700", color: C.text, marginBottom: 3 },
-  timetableMeta:    { fontSize: 12, color: C.muted, marginBottom: 2 },
-  timetableLecturer:{ fontSize: 11, color: C.muted },
-  codeBadge: {
-    backgroundColor: C.badge, borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0,
-  },
-  codeBadgeText: { fontSize: 10, fontWeight: "700", color: C.navy },
+  modalTitle: { fontSize: 20, fontWeight: "700", color: C.white },
+  closeModalBtn: { backgroundColor: C.card, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  closeModalBtnText: { color: C.navy, fontWeight: "600" },
+  modalLoading: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
+  modalLoadingText: { marginTop: 12, color: C.muted },
+  modalEmpty: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
+  modalEmptyIcon: { fontSize: 48, marginBottom: 16 },
+  modalEmptyTitle: { fontSize: 18, fontWeight: "700", color: C.text, marginBottom: 8 },
+  modalEmptySubtitle: { fontSize: 14, color: C.muted, textAlign: "center" },
 
-  // ── Empty states ──────────────────────────────────────────────────────────────
+  tableContainer: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    overflow: "hidden",
+    margin: 16,
+    minWidth: 600,
+  },
+  tableHeaderRow: { flexDirection: "row", backgroundColor: C.navy },
+  tableHeaderCell: {
+    width: 100,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRightWidth: 0.5,
+    borderRightColor: "rgba(255,255,255,0.1)",
+  },
+  timeColumnHeader: { width: 90 },
+  tableHeaderText: { color: C.white, fontSize: 12, fontWeight: "700" },
+  tableRow: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: C.border },
+  tableCell: {
+    width: 100,
+    paddingVertical: 16,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRightWidth: 0.5,
+    borderRightColor: C.border,
+    minHeight: 85,
+  },
+  timeColumnCell: { width: 90, backgroundColor: C.bg },
+  timeText: { fontSize: 10, color: C.muted, fontWeight: "600", textAlign: "center" },
+  hasCourse: { backgroundColor: "#e0f2fe" },
+  courseCell: { alignItems: "center", justifyContent: "center", width: "100%" },
+  courseItem: { width: "100%", paddingVertical: 4 },
+  courseDivider: { height: 1, backgroundColor: C.border, marginVertical: 4, width: "100%" },
+  courseCodeText: { fontSize: 10, fontWeight: "700", color: C.navy, textAlign: "center" },
+  courseNameText: { fontSize: 9, color: C.text, textAlign: "center", marginTop: 3 },
+  venueText: { fontSize: 8, color: C.muted, textAlign: "center", marginTop: 2 },
+  lecturerText: { fontSize: 8, color: C.gold, textAlign: "center", marginTop: 2 },
+  emptyCellText: { fontSize: 14, color: C.muted },
+
   emptyCard: {
-    backgroundColor: C.empty, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 24, marginBottom: 16, alignItems: "center",
+    backgroundColor: C.empty,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 16,
+    alignItems: "center",
   },
-  emptyIcon:     { fontSize: 32, marginBottom: 10 },
-  emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
+  emptyIcon: { fontSize: 32, marginBottom: 10 },
+  emptyTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
   emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
 
-  // ── Nav cards ─────────────────────────────────────────────────────────────────
   navCard: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 12, padding: 16, marginBottom: 8,
-    flexDirection: "row", alignItems: "center",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  navCardBody:  { flex: 1 },
+  navCardBody: { flex: 1 },
   navCardTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 3 },
-  navCardSub:   { fontSize: 12, color: C.muted },
-  navArrow:     { fontSize: 22, color: C.muted, marginLeft: 8 },
+  navCardSub: { fontSize: 12, color: C.muted },
+  navArrow: { fontSize: 22, color: C.muted, marginLeft: 8 },
 
-  
   logoutBtn: {
-    backgroundColor: C.navy, borderRadius: 12, padding: 16,
-    alignItems: "center", marginTop: 4, marginBottom: 16,
-    flexDirection: "row", justifyContent: "space-between",
+    backgroundColor: C.navy,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginTop: 4,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
-  logoutText:  { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
-  logoutArrow: { fontSize: 22, color: "#f3eeee" },
+  logoutText: { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
+  logoutArrow: { fontSize: 22, color: "#f3eeee", marginLeft: 8 },
 });

@@ -34,9 +34,9 @@ function Field({ label, value, onChangeText, placeholder, multiline, editable = 
       <Text style={s.fieldLabel}>{label}</Text>
       <TextInput
         style={[s.input, multiline && s.inputMulti, !editable && s.inputReadonly]}
-        value={value}
+        value={value || ''}
         onChangeText={onChangeText}
-        placeholder={placeholder || ""}
+        placeholder={editable ? placeholder : ""}
         placeholderTextColor={C.muted}
         multiline={multiline}
         numberOfLines={multiline ? 3 : 1}
@@ -85,32 +85,29 @@ function CourseCard({ item, selected, onPress }) {
 export default function LectureReportScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [fetchingReports, setFetchingReports] = useState(false);
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelected] = useState(null);
-  const [existingReports, setExistingReports] = useState([]);
-  const [existingWeeks, setExistingWeeks] = useState([]);
-  const [editingReport, setEditingReport] = useState(null);
-  const [showReportList, setShowReportList] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [duplicateError, setDuplicateError] = useState("");
 
-  // Form fields
+  // Automatically filled from course
   const [facultyName, setFacultyName] = useState("");
   const [className, setClassName] = useState("");
-  const [week, setWeek] = useState("");
-  const [date, setDate] = useState("");
   const [courseName, setCourseName] = useState("");
   const [courseCode, setCourseCode] = useState("");
   const [lecturerName, setLecturerName] = useState("");
-  const [actualPresent, setActualPresent] = useState("");
-  const [totalRegistered, setTotalRegistered] = useState("");
   const [venue, setVenue] = useState("");
   const [time, setTime] = useState("");
+  const [totalRegistered, setTotalRegistered] = useState("");
+
+  // Lecturer enters these
+  const [week, setWeek] = useState("");
+  const [date, setDate] = useState("");
+  const [actualPresent, setActualPresent] = useState("");
   const [topic, setTopic] = useState("");
   const [outcomes, setOutcomes] = useState("");
   const [recommendations, setRecommendations] = useState("");
 
-  // Load lecturer's courses
   const loadCourses = async () => {
     try {
       const response = await api.get("/courses/mine");
@@ -124,141 +121,48 @@ export default function LectureReportScreen({ navigation }) {
     }
   };
 
-  // Load existing reports for selected course
-  const loadExistingReports = async (courseId) => {
-    setFetchingReports(true);
-    try {
-      const response = await api.get(`/reports/course/${courseId}`);
-      if (response.data.success) {
-        setExistingReports(response.data.reports);
-        // Track which weeks already have reports (for duplicate prevention)
-        const weeks = response.data.reports.map(r => r.week?.toString());
-        setExistingWeeks(weeks);
-      }
-    } catch (error) {
-      console.log("Failed to load existing reports");
-    } finally {
-      setFetchingReports(false);
-    }
-  };
-
   const selectCourse = async (course) => {
     setSelected(course);
     setCourseName(course.courseName || "");
     setCourseCode(course.courseCode || "");
-    setClassName(course.className || "");
     setVenue(course.venue || "");
     setTime(course.time || "");
-    setFacultyName(course.facultyName || "");
-
-    const userData = await AsyncStorage.getItem("user_data");
-    const user = userData ? JSON.parse(userData) : {};
-    setLecturerName(course.lecturerName || user.username || "Lecturer");
-
-    if (course.classId) {
-      try {
-        const studentsRes = await api.get(`/attendance/course/${course.id}/students`);
-        if (studentsRes.data.success) {
-          setTotalRegistered(String(studentsRes.data.students.length));
-        }
-      } catch (_) {
-        setTotalRegistered("0");
-      }
-    }
-
-    // Load existing reports for this course
-    await loadExistingReports(course.id);
-    setShowReportList(true);
-    setEditingReport(null);
+    setLecturerName(course.lecturerName || "");
+    setClassName(course.className || "");
+    setFacultyName(course.facultyName || "FICT");
+    setTotalRegistered(course.totalRegistered || "0");
+    
+    setShowForm(true);
     clearForm();
     setDuplicateError("");
   };
 
-  // Check if week already has a report
-  const checkDuplicateWeek = (weekNum) => {
-    if (!weekNum) return false;
-    // Don't check if editing the same report
-    if (editingReport && editingReport.week?.toString() === weekNum.toString()) {
-      return false;
-    }
-    return existingWeeks.includes(weekNum.toString());
-  };
-
-  // Edit existing report
-  const editReport = (report) => {
-    setEditingReport(report);
-    setFacultyName(report.facultyName || "");
-    setClassName(report.className || "");
-    setWeek(report.week?.toString() || "");
-    setDate(report.date || "");
-    setCourseName(report.courseName || "");
-    setCourseCode(report.courseCode || "");
-    setLecturerName(report.lecturerName || "");
-    setActualPresent(report.actualPresent?.toString() || "");
-    setTotalRegistered(report.totalRegistered?.toString() || "");
-    setVenue(report.venue || "");
-    setTime(report.scheduledTime || "");
-    setTopic(report.topic || "");
-    setOutcomes(report.outcomes || "");
-    setRecommendations(report.recommendations || "");
-    setShowReportList(false);
-    setDuplicateError("");
-  };
-
   const clearForm = () => {
-    setFacultyName("");
-    setClassName("");
     setWeek("");
     setDate("");
     setActualPresent("");
-    setTotalRegistered("");
-    setVenue("");
-    setTime("");
     setTopic("");
     setOutcomes("");
     setRecommendations("");
-    setDuplicateError("");
   };
 
-  // Check if week field has duplicate when user types
   const handleWeekChange = (value) => {
     setWeek(value);
-    if (checkDuplicateWeek(value)) {
-      setDuplicateError(`⚠️ Week ${value} already has a report. You can edit the existing report instead.`);
-    } else {
-      setDuplicateError("");
-    }
+    setDuplicateError("");
   };
 
   const submitReport = async () => {
     if (!selectedCourse) return Alert.alert("Select a course", "Please choose a course first.");
+    if (!week) return Alert.alert("Week required", "Please enter the week number.");
     if (!topic.trim()) return Alert.alert("Topic required", "Please enter the topic taught.");
     if (!actualPresent.trim()) return Alert.alert("Attendance required", "Please enter students present.");
-    
-    // Check for duplicate week (only for new reports, not editing)
-    if (!editingReport && checkDuplicateWeek(week)) {
-      return Alert.alert(
-        "Duplicate Report",
-        `You have already submitted a report for Week ${week}. Do you want to edit the existing report instead?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { 
-            text: "Edit Existing", 
-            onPress: () => {
-              const existing = existingReports.find(r => r.week?.toString() === week.toString());
-              if (existing) editReport(existing);
-            }
-          }
-        ]
-      );
-    }
 
     setSubmitting(true);
     try {
       const payload = {
         facultyName,
         className,
-        week: week ? Number(week) : null,
+        week: Number(week),
         date: date || new Date().toISOString().split('T')[0],
         courseName,
         courseCode,
@@ -273,32 +177,31 @@ export default function LectureReportScreen({ navigation }) {
         recommendations
       };
 
-      let response;
-      if (editingReport) {
-        response = await api.put(`/reports/${editingReport.id}`, payload);
-      } else {
-        response = await api.post("/reports", payload);
-      }
+      const response = await api.post("/reports", payload);
 
       if (response.data.success) {
-        Alert.alert("Success", editingReport ? "Report updated successfully." : "Report submitted successfully.");
+        Alert.alert("Success", "Report submitted successfully.");
         clearForm();
-        setEditingReport(null);
-        await loadExistingReports(selectedCourse.id);
-        setShowReportList(true);
+        setShowForm(false);
+        setSelected(null);
         setDuplicateError("");
       }
     } catch (error) {
-      Alert.alert("Error", error.response?.data?.error || "Failed to submit report");
+      const errorMsg = error.response?.data?.error || "Failed to submit report";
+      Alert.alert("Error", errorMsg);
+      // If it's a duplicate week error, display it
+      if (errorMsg.includes("already submitted") || errorMsg.includes("Week")) {
+        setDuplicateError(errorMsg);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const cancelEdit = () => {
+  const cancelReport = () => {
     clearForm();
-    setEditingReport(null);
-    setShowReportList(true);
+    setShowForm(false);
+    setSelected(null);
     setDuplicateError("");
   };
 
@@ -319,7 +222,7 @@ export default function LectureReportScreen({ navigation }) {
       <View style={s.header}>
         <Text style={s.eyebrow}>Lecturer Portal</Text>
         <Text style={s.headerTitle}>Lecture Report</Text>
-        <Text style={s.headerSub}>Submit or edit your lecture reports</Text>
+        <Text style={s.headerSub}>Submit your weekly lecture report</Text>
       </View>
 
       <ScrollView
@@ -347,62 +250,71 @@ export default function LectureReportScreen({ navigation }) {
           ))
         )}
 
-        {/* Show existing reports list */}
-        {selectedCourse && showReportList && !editingReport && (
+        {showForm && selectedCourse && (
           <>
-            <FormSection title="Previous Reports" />
-            {fetchingReports ? (
-              <ActivityIndicator size="small" color={C.navy} />
-            ) : existingReports.length === 0 ? (
-              <View style={s.emptyCard}>
-                <Text style={s.emptySubtitle}>No previous reports for this course.</Text>
-              </View>
-            ) : (
-              existingReports.map((report) => (
-                <TouchableOpacity
-                  key={report.id}
-                  style={s.reportCard}
-                  onPress={() => editReport(report)}
-                >
-                  <Text style={s.reportWeek}>Week {report.week}</Text>
-                  <Text style={s.reportTopic}>{report.topic}</Text>
-                  <Text style={s.reportDate}>{report.date}</Text>
-                  <Text style={s.reportStatus}>
-                    Status: {report.status === 'pending' ? '📝 Pending' : '✅ Reviewed'}
-                  </Text>
-                  <Text style={s.editHint}>Tap to edit</Text>
-                </TouchableOpacity>
-              ))
-            )}
-            
-            <TouchableOpacity
-              style={s.newReportBtn}
-              onPress={() => {
-                clearForm();
-                setEditingReport(null);
-                setShowReportList(false);
-                setDuplicateError("");
-              }}
-            >
-              <Text style={s.newReportBtnText}>+ Create New Report</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        {/* Report Form */}
-        {selectedCourse && !showReportList && (
-          <>
-            <FormSection title={editingReport ? "Edit Report" : "New Report"} />
+            <FormSection title="Course Information (Auto-filled)" />
 
             <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <Field label="Faculty" value={facultyName} onChangeText={setFacultyName} placeholder="e.g. FICT" />
+              <View style={{ flex: 2 }}>
+                <Field 
+                  label="Course Name" 
+                  value={courseName} 
+                  editable={false} 
+                />
               </View>
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
-                <Field label="Class" value={className} onChangeText={setClassName} placeholder="e.g. BSCSMY3" />
+                <Field 
+                  label="Code" 
+                  value={courseCode} 
+                  editable={false} 
+                />
               </View>
             </View>
+
+            <Field 
+              label="Lecturer" 
+              value={lecturerName} 
+              editable={false} 
+            />
+
+            <View style={s.row}>
+              <View style={{ flex: 1 }}>
+                <Field 
+                  label="Faculty" 
+                  value={facultyName} 
+                  editable={false} 
+                />
+              </View>
+              <View style={{ width: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Field 
+                  label="Class" 
+                  value={className} 
+                  editable={false} 
+                />
+              </View>
+            </View>
+
+            <View style={s.row}>
+              <View style={{ flex: 1 }}>
+                <Field 
+                  label="Venue" 
+                  value={venue} 
+                  editable={false} 
+                />
+              </View>
+              <View style={{ width: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Field 
+                  label="Time" 
+                  value={time} 
+                  editable={false} 
+                />
+              </View>
+            </View>
+
+            <FormSection title="Report Details" />
 
             <View style={s.row}>
               <View style={{ flex: 1 }}>
@@ -410,7 +322,7 @@ export default function LectureReportScreen({ navigation }) {
                   label="Week Number" 
                   value={week} 
                   onChangeText={handleWeekChange} 
-                  placeholder="e.g. 3" 
+                  placeholder="e.g. 5" 
                   keyboardType="numeric" 
                 />
                 {duplicateError !== "" && (
@@ -419,58 +331,62 @@ export default function LectureReportScreen({ navigation }) {
               </View>
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
-                <Field label="Date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+                <Field 
+                  label="Date" 
+                  value={date} 
+                  onChangeText={setDate} 
+                  placeholder="YYYY-MM-DD" 
+                />
               </View>
             </View>
 
-            <FormSection title="Course Information" />
-
             <View style={s.row}>
-              <View style={{ flex: 2 }}>
-                <Field label="Course Name" value={courseName} onChangeText={setCourseName} editable={false} />
+              <View style={{ flex: 1 }}>
+                <Field 
+                  label="Students Present" 
+                  value={actualPresent} 
+                  onChangeText={setActualPresent} 
+                  placeholder="0" 
+                  keyboardType="numeric" 
+                />
               </View>
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
-                <Field label="Code" value={courseCode} onChangeText={setCourseCode} editable={false} />
-              </View>
-            </View>
-
-            <Field label="Lecturer Name" value={lecturerName} onChangeText={setLecturerName} editable={false} />
-
-            <FormSection title="Attendance" />
-
-            <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <Field label="Students Present" value={actualPresent} onChangeText={setActualPresent} placeholder="0" keyboardType="numeric" />
-              </View>
-              <View style={{ width: 12 }} />
-              <View style={{ flex: 1 }}>
-                <Field label="Total Registered" value={totalRegistered} onChangeText={setTotalRegistered} placeholder="0" keyboardType="numeric" />
-              </View>
-            </View>
-
-            <FormSection title="Logistics" />
-
-            <View style={s.row}>
-              <View style={{ flex: 1 }}>
-                <Field label="Venue" value={venue} onChangeText={setVenue} placeholder="e.g. Room 1" />
-              </View>
-              <View style={{ width: 12 }} />
-              <View style={{ flex: 1 }}>
-                <Field label="Scheduled Time" value={time} onChangeText={setTime} placeholder="e.g. 08:00–10:00" />
+                <Field 
+                  label="Total Registered" 
+                  value={totalRegistered} 
+                  editable={false} 
+                />
               </View>
             </View>
 
             <FormSection title="Academic Content" />
 
-            <Field label="Topic Taught" value={topic} onChangeText={setTopic} placeholder="e.g. Introduction to Limits" />
-            <Field label="Learning Outcomes" value={outcomes} onChangeText={setOutcomes} placeholder="What students should be able to do..." multiline />
-            <Field label="Recommendations" value={recommendations} onChangeText={setRecommendations} placeholder="Any recommendations or follow-up actions..." multiline />
+            <Field 
+              label="Topic Taught" 
+              value={topic} 
+              onChangeText={setTopic} 
+              placeholder="e.g. Introduction to React Native" 
+            />
+            <Field 
+              label="Learning Outcomes" 
+              value={outcomes} 
+              onChangeText={setOutcomes} 
+              placeholder="What students should be able to do..." 
+              multiline 
+            />
+            <Field 
+              label="Recommendations" 
+              value={recommendations} 
+              onChangeText={setRecommendations} 
+              placeholder="Any recommendations or follow-up actions..." 
+              multiline 
+            />
 
             <View style={s.buttonRow}>
               <TouchableOpacity
                 style={[s.cancelBtn, submitting && { opacity: 0.6 }]}
-                onPress={cancelEdit}
+                onPress={cancelReport}
                 disabled={submitting}
               >
                 <Text style={s.cancelBtnText}>Cancel</Text>
@@ -478,10 +394,10 @@ export default function LectureReportScreen({ navigation }) {
               <TouchableOpacity
                 style={[s.submitBtn, submitting && { opacity: 0.6 }]}
                 onPress={submitReport}
-                disabled={submitting || !!duplicateError}
+                disabled={submitting}
               >
                 <Text style={s.submitText}>
-                  {submitting ? "Saving..." : (editingReport ? "Update Report" : "Submit Report")}
+                  {submitting ? "Submitting..." : "Submit Report"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -538,25 +454,6 @@ const s = StyleSheet.create({
     alignItems: "center", justifyContent: "center", marginLeft: 10,
   },
   checkMark: { color: C.white, fontSize: 11, fontWeight: "700" },
-
-  reportCard: {
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    borderRadius: 10, padding: 12, marginBottom: 8,
-  },
-  reportWeek: { fontSize: 12, color: C.gold, fontWeight: "bold", marginBottom: 4 },
-  reportTopic: { fontSize: 14, fontWeight: "600", color: C.text, marginBottom: 2 },
-  reportDate: { fontSize: 11, color: C.muted },
-  reportStatus: { fontSize: 10, color: C.muted, marginTop: 2 },
-  editHint: { fontSize: 10, color: C.muted, marginTop: 4, fontStyle: "italic" },
-
-  newReportBtn: {
-    backgroundColor: C.navy,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginVertical: 10,
-  },
-  newReportBtnText: { color: C.white, fontWeight: "600" },
 
   errorText: {
     fontSize: 11,
