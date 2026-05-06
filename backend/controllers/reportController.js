@@ -233,6 +233,415 @@ const exportReportsToExcel = async (req, res) => {
   }
 };
 
+// ─── Export reports to HTML/PDF (printable format) ───────────────────────────
+const exportReportsToPDF = async (req, res) => {
+  try {
+    console.log('Starting HTML export...');
+    
+    const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
+    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    console.log(`Found ${reports.length} reports to export`);
+
+    // Simple HTML template
+    let htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Lecture Reports Export</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            margin: 20px;
+            color: #333;
+            background: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #2563eb;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        .date {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 30px;
+        }
+        .summary {
+            background: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #2563eb;
+        }
+        .summary h2 {
+            color: #2563eb;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        .summary-grid {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2563eb;
+        }
+        .reports-section {
+            margin-top: 30px;
+        }
+        .reports-section h2 {
+            color: #2563eb;
+            font-size: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .report-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .report-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2563eb;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .info-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .info-item {
+            flex: 1;
+            min-width: 200px;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #4b5563;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            color: #1f2937;
+            font-size: 14px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-pending {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .status-reviewed {
+            background: #d1fae5;
+            color: #059669;
+        }
+        .status-needs_revision {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .feedback-box {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f3f4f6;
+            border-radius: 6px;
+            border-left: 3px solid #2563eb;
+        }
+        .feedback-title {
+            font-weight: bold;
+            color: #2563eb;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        .feedback-text {
+            color: #374151;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .attendance-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        .attendance-progress {
+            flex: 1;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .attendance-fill {
+            height: 100%;
+            background: #10b981;
+            border-radius: 4px;
+        }
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 11px;
+            color: #9ca3af;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 20px;
+        }
+        @media print {
+            body {
+                margin: 0;
+                padding: 10px;
+            }
+            .report-card {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            .export-btn {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Lecture Reports Export</h1>
+            <div class="subtitle">Academic Performance Reports</div>
+        </div>
+        <div class="date">
+            Generated: ${new Date().toLocaleString()}
+        </div>`;
+
+    // Calculate statistics
+    const totalReports = reports.length;
+    const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
+    const pendingReports = reports.filter(r => r.status === 'pending').length;
+    const needsRevisionReports = reports.filter(r => r.status === 'needs_revision').length;
+    const totalAttendance = reports.reduce((sum, r) => sum + (r.actualPresent || 0), 0);
+    const totalStudents = reports.reduce((sum, r) => sum + (r.totalRegistered || 0), 0);
+    const avgAttendance = totalStudents > 0 ? ((totalAttendance / totalStudents) * 100).toFixed(1) : 0;
+
+    htmlContent += `
+        <div class="summary">
+            <h2>📈 Summary Statistics</h2>
+            <div class="summary-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Reports</div>
+                    <div class="stat-value">${totalReports}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Reviewed</div>
+                    <div class="stat-value" style="color: #10b981;">${reviewedReports}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Pending</div>
+                    <div class="stat-value" style="color: #f59e0b;">${pendingReports}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Need Revision</div>
+                    <div class="stat-value" style="color: #ef4444;">${needsRevisionReports}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Attendance</div>
+                    <div class="stat-value">${avgAttendance}%</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="reports-section">
+            <h2>📋 Detailed Reports</h2>`;
+
+    // Add each report
+    reports.forEach((report, index) => {
+      const statusClass = `status-${report.status || 'pending'}`;
+      const statusText = report.status === 'reviewed' ? 'Reviewed' : 
+                        report.status === 'needs_revision' ? 'Needs Revision' : 'Pending';
+      
+      const attendancePercentage = report.totalRegistered > 0 
+        ? ((report.actualPresent / report.totalRegistered) * 100).toFixed(1) 
+        : 0;
+      
+      // Safely escape strings
+      const safeCourseName = (report.courseName || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeCourseCode = (report.courseCode || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeLecturerName = (report.lecturerName || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeFacultyName = (report.facultyName || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeClassName = (report.className || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeTopic = (report.topic || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeWeek = (report.week || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeDate = (report.date || 'N/A').toString();
+      const safeVenue = (report.venue || 'N/A').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeTime = (report.scheduledTime || 'N/A').toString();
+      const safeOutcomes = (report.outcomes || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeRecommendations = (report.recommendations || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safePrlFeedback = (report.prlFeedback || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeRevisionNotes = (report.revisionNotes || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      
+      htmlContent += `
+            <div class="report-card">
+                <div class="report-title">${index + 1}. ${safeCourseName} (${safeCourseCode})</div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">👨‍🏫 Lecturer</div>
+                        <div class="info-value">${safeLecturerName}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">🏛 Faculty</div>
+                        <div class="info-value">${safeFacultyName}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">📚 Class</div>
+                        <div class="info-value">${safeClassName}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">📖 Topic</div>
+                        <div class="info-value">${safeTopic}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">📅 Week</div>
+                        <div class="info-value">${safeWeek}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">📆 Date</div>
+                        <div class="info-value">${safeDate}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">📍 Venue</div>
+                        <div class="info-value">${safeVenue}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">⏰ Time</div>
+                        <div class="info-value">${safeTime}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">👥 Attendance</div>
+                        <div class="info-value">
+                            ${report.actualPresent || 0}/${report.totalRegistered || 0}
+                            <div class="attendance-bar">
+                                <div class="attendance-progress">
+                                    <div class="attendance-fill" style="width: ${attendancePercentage}%"></div>
+                                </div>
+                                <span>${attendancePercentage}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">📊 Status</div>
+                        <div class="info-value">
+                            <span class="status ${statusClass}">${statusText}</span>
+                        </div>
+                    </div>
+                </div>`;
+
+      if (safeOutcomes) {
+        htmlContent += `
+                <div class="info-item" style="margin-top: 10px;">
+                    <div class="info-label">🎯 Learning Outcomes</div>
+                    <div class="info-value">${safeOutcomes}</div>
+                </div>`;
+      }
+
+      if (safeRecommendations) {
+        htmlContent += `
+                <div class="info-item" style="margin-top: 10px;">
+                    <div class="info-label">💡 Recommendations</div>
+                    <div class="info-value">${safeRecommendations}</div>
+                </div>`;
+      }
+
+      if (safePrlFeedback) {
+        htmlContent += `
+                <div class="feedback-box">
+                    <div class="feedback-title">📝 PRL Feedback</div>
+                    <div class="feedback-text">${safePrlFeedback}</div>
+                </div>`;
+      }
+
+      if (safeRevisionNotes) {
+        htmlContent += `
+                <div class="feedback-box" style="border-left-color: #ef4444;">
+                    <div class="feedback-title" style="color: #ef4444;">🔄 Revision Notes</div>
+                    <div class="feedback-text">${safeRevisionNotes}</div>
+                </div>`;
+      }
+
+      htmlContent += `
+            </div>`;
+    });
+
+    htmlContent += `
+        </div>
+        <div class="footer">
+            <p>Generated by Lecture Report System • ${new Date().toLocaleString()}</p>
+            <p>This is an automatically generated document</p>
+            <p style="margin-top: 10px;">💡 Tip: Use browser's Print function (Ctrl+P) to save as PDF</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    // Send as HTML file
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.html');
+    res.send(htmlContent);
+    
+    console.log('HTML export completed successfully');
+    
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      stack: error.stack 
+    });
+  }
+};
+
 // ─── Export ratings to Excel ────────────────────────────────────────────
 const exportRatingsToExcel = async (req, res) => {
   try {
@@ -317,264 +726,7 @@ const exportRatingsToExcel = async (req, res) => {
   }
 };
 
-/// Add this function to your reportController.js
-const exportReportsToPDF = async (req, res) => {
-  try {
-    const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
-    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    // Create HTML content that can be printed as PDF
-    let htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Lecture Reports Export</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-            color: #333;
-          }
-          h1 {
-            color: #2563eb;
-            text-align: center;
-            margin-bottom: 10px;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #2563eb;
-            padding-bottom: 10px;
-          }
-          .date {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-          }
-          .report-card {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            page-break-inside: avoid;
-            background: #f9f9f9;
-          }
-          .report-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2563eb;
-            margin-bottom: 10px;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
-          }
-          .report-section {
-            margin: 10px 0;
-          }
-          .section-label {
-            font-weight: bold;
-            color: #555;
-            display: inline-block;
-            width: 120px;
-          }
-          .section-value {
-            color: #333;
-            display: inline-block;
-          }
-          .feedback-section {
-            margin-top: 10px;
-            padding: 10px;
-            background: #e8f0fe;
-            border-radius: 5px;
-          }
-          .status-pending {
-            color: #f59e0b;
-            font-weight: bold;
-          }
-          .status-reviewed {
-            color: #10b981;
-            font-weight: bold;
-          }
-          .status-needs_revision {
-            color: #ef4444;
-            font-weight: bold;
-          }
-          .summary {
-            margin-top: 30px;
-            padding: 15px;
-            background: #f0f9ff;
-            border-radius: 8px;
-            margin-bottom: 30px;
-          }
-          @media print {
-            body {
-              margin: 0;
-              padding: 20px;
-            }
-            .report-card {
-              break-inside: avoid;
-              page-break-inside: avoid;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>📊 Lecture Reports Export</h1>
-          <p>Academic Performance Reports</p>
-        </div>
-        <div class="date">
-          Generated: ${new Date().toLocaleString()}
-        </div>
-    `;
-
-    // Add summary statistics
-    const totalReports = reports.length;
-    const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
-    const pendingReports = reports.filter(r => r.status === 'pending').length;
-    const needsRevisionReports = reports.filter(r => r.status === 'needs_revision').length;
-
-    htmlContent += `
-      <div class="summary">
-        <h3>Summary Statistics</h3>
-        <p><strong>Total Reports:</strong> ${totalReports}</p>
-        <p><strong>Reviewed Reports:</strong> ${reviewedReports}</p>
-        <p><strong>Pending Reports:</strong> ${pendingReports}</p>
-        <p><strong>Need Revision:</strong> ${needsRevisionReports}</p>
-      </div>
-      
-      <h2>Detailed Reports</h2>
-    `;
-
-    // Add each report
-    reports.forEach(report => {
-      const statusClass = report.status === 'reviewed' ? 'status-reviewed' : 
-                         report.status === 'needs_revision' ? 'status-needs_revision' : 'status-pending';
-      
-      htmlContent += `
-        <div class="report-card">
-          <div class="report-title">
-            ${escapeHtml(report.courseName || 'N/A')} (${escapeHtml(report.courseCode || 'N/A')})
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Lecturer:</span>
-            <span class="section-value">${escapeHtml(report.lecturerName || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Faculty:</span>
-            <span class="section-value">${escapeHtml(report.facultyName || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Class:</span>
-            <span class="section-value">${escapeHtml(report.className || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Topic:</span>
-            <span class="section-value">${escapeHtml(report.topic || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Week:</span>
-            <span class="section-value">${escapeHtml(report.week || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Date:</span>
-            <span class="section-value">${escapeHtml(report.date || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Venue:</span>
-            <span class="section-value">${escapeHtml(report.venue || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Time:</span>
-            <span class="section-value">${escapeHtml(report.scheduledTime || 'N/A')}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Attendance:</span>
-            <span class="section-value">${report.actualPresent || 0}/${report.totalRegistered || 0}</span>
-          </div>
-          
-          <div class="report-section">
-            <span class="section-label">Status:</span>
-            <span class="${statusClass}">${report.status || 'pending'}</span>
-          </div>
-      `;
-
-      if (report.outcomes) {
-        htmlContent += `
-          <div class="report-section">
-            <span class="section-label">Learning Outcomes:</span>
-            <div class="section-value">${escapeHtml(report.outcomes)}</div>
-          </div>
-        `;
-      }
-
-      if (report.recommendations) {
-        htmlContent += `
-          <div class="report-section">
-            <span class="section-label">Recommendations:</span>
-            <div class="section-value">${escapeHtml(report.recommendations)}</div>
-          </div>
-        `;
-      }
-
-      if (report.prlFeedback) {
-        htmlContent += `
-          <div class="feedback-section">
-            <strong>PRL Feedback:</strong><br>
-            ${escapeHtml(report.prlFeedback)}
-          </div>
-        `;
-      }
-
-      if (report.revisionNotes) {
-        htmlContent += `
-          <div class="feedback-section" style="background: #fee2e2;">
-            <strong>Revision Notes:</strong><br>
-            ${escapeHtml(report.revisionNotes)}
-          </div>
-        `;
-      }
-
-      htmlContent += `</div>`;
-    });
-
-    htmlContent += `
-      </body>
-      </html>
-    `;
-
-    // Send as HTML file that can be printed to PDF
-    res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.html');
-    res.send(htmlContent);
-    
-  } catch (error) {
-    console.error('Export PDF error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// Helper function to escape HTML special characters
-function escapeHtml(text) {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-// Update module.exports at the bottom of your file
+// ─── Module Exports ──────────────────────────────────────────────────────────
 module.exports = {
   createReport,
   getReports,
@@ -584,6 +736,6 @@ module.exports = {
   getPendingReports,
   getReviewedReports,
   exportReportsToExcel,
-  exportReportsToPDF,  // Add this line
+  exportReportsToPDF,
   exportRatingsToExcel,
 };
