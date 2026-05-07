@@ -2,7 +2,7 @@ const { db } = require('../config/firebase');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 
-// ─── Submit report — lecturer only ───────────────────────────────────────────
+
 const createReport = async (req, res) => {
   try {
     const {
@@ -19,23 +19,40 @@ const createReport = async (req, res) => {
     if (!topic || !actualPresent) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
+    if (!week) {
+      return res.status(400).json({ success: false, error: 'Week number is required' });
+    }
+
+    
+    const existingSnap = await db.collection('lectureReports')
+      .where('lecturerId', '==', lecturerId)
+      .where('courseCode', '==', courseCode || '')
+      .where('week',       '==', Number(week))
+      .get();
+
+    if (!existingSnap.empty) {
+      return res.status(400).json({
+        success: false,
+        error: `You have already submitted a report for ${courseName} in Week ${week}. Each course can only have one report per week.`
+      });
+    }
 
     const reportData = {
-      facultyName:      facultyName || '',
-      className:        className || '',
-      week:             week || '',
-      date:             date || new Date().toISOString().split('T')[0],
-      courseName:       courseName || '',
-      courseCode:       courseCode || '',
-      classId:          classId || '',
+      facultyName:      facultyName     || '',
+      className:        className       || '',
+      week:             Number(week),
+      date:             date            || new Date().toISOString().split('T')[0],
+      courseName:       courseName      || '',
+      courseCode:       courseCode      || '',
+      classId:          classId         || '',
       lecturerId,
-      lecturerName:     lecturerName || '',
+      lecturerName:     lecturerName    || '',
       actualPresent:    Number(actualPresent),
       totalRegistered:  totalRegistered ? Number(totalRegistered) : 0,
-      venue:            venue || '',
-      scheduledTime:    scheduledTime || '',
+      venue:            venue           || '',
+      scheduledTime:    scheduledTime   || '',
       topic,
-      outcomes:         outcomes || '',
+      outcomes:         outcomes        || '',
       recommendations:  recommendations || '',
       status:           'pending',
       prlFeedback:      '',
@@ -56,7 +73,7 @@ const createReport = async (req, res) => {
   }
 };
 
-// ─── Get ALL reports (PRL/PL only) ───────────────────────────────────────────
+
 const getReports = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
@@ -67,7 +84,7 @@ const getReports = async (req, res) => {
   }
 };
 
-// ─── Get THIS lecturer's own reports only ────────────────────────────────────
+
 const getMyReports = async (req, res) => {
   try {
     const lecturerId = req.headers['x-user-id'];
@@ -85,7 +102,7 @@ const getMyReports = async (req, res) => {
   }
 };
 
-// ─── PRL: add structured feedback to a report ────────────────────────────────
+
 const updateReportFeedback = async (req, res) => {
   try {
     const { reportId } = req.params;
@@ -117,7 +134,7 @@ const updateReportFeedback = async (req, res) => {
   }
 };
 
-// ─── PRL — mark report as requiring revision ────────────────────────────────
+
 const markRequiresRevision = async (req, res) => {
   try {
     const { reportId } = req.params;
@@ -142,7 +159,7 @@ const markRequiresRevision = async (req, res) => {
   }
 };
 
-// ─── PRL: pending reports ─────────────────────────────────────────────────────
+
 const getPendingReports = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports')
@@ -155,7 +172,7 @@ const getPendingReports = async (req, res) => {
   }
 };
 
-// ─── PRL: reviewed reports ────────────────────────────────────────────────────
+// reviewed reports 
 const getReviewedReports = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports')
@@ -168,7 +185,7 @@ const getReviewedReports = async (req, res) => {
   }
 };
 
-// ─── Export reports to Excel ──────────────────────────────────────────────────
+
 const exportReportsToExcel = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
@@ -234,7 +251,7 @@ const exportReportsToExcel = async (req, res) => {
   }
 };
 
-// ─── Export reports to PURE PDF using PDFKit ──────────────────────────────────
+
 const exportReportsToPDF = async (req, res) => {
   try {
     console.log('Starting PDF generation...');
@@ -377,7 +394,7 @@ const exportReportsToPDF = async (req, res) => {
       
       let newY = yPos + (lineHeight * 4);
       
-      // Attendance with visual bar
+
       const attendancePercent = report.totalRegistered > 0 
         ? (report.actualPresent / report.totalRegistered) * 100 
         : 0;
@@ -385,7 +402,7 @@ const exportReportsToPDF = async (req, res) => {
       doc.text(`Attendance:`, leftX, newY);
       doc.text(`${report.actualPresent || 0}/${report.totalRegistered || 0} (${attendancePercent.toFixed(1)}%)`, 120, newY);
       
-      // Draw attendance bar
+     
       const barWidth = 200;
       const barHeight = 8;
       doc.rect(120, newY + 12, barWidth, barHeight)

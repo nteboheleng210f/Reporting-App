@@ -1,34 +1,16 @@
 import React, { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  Alert,
-  ActivityIndicator,
-  StatusBar,
-  Modal,
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  ScrollView, SafeAreaView, Alert, ActivityIndicator, StatusBar, Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../services/api";
 
 const C = {
-  navy:    "#0f1f3d",
-  gold:    "#c9a84c",
-  white:   "#ffffff",
-  bg:      "#f5f7fb",
-  card:    "#ffffff",
-  border:  "#e4e8f0",
-  text:    "#102040",
-  muted:   "#6c7a96",
-  badge:   "#edf0f7",
-  green:   "#16a34a",
-  greenBg: "#dcfce7",
-  red:     "#dc2626",
-  redBg:   "#fee2e2",
+  navy:"#0f1f3d", gold:"#c9a84c", white:"#ffffff",
+  bg:"#f5f7fb", card:"#ffffff", border:"#e4e8f0",
+  text:"#102040", muted:"#6c7a96", badge:"#edf0f7",
+  green:"#16a34a", greenBg:"#dcfce7", red:"#dc2626", redBg:"#fee2e2",
 };
 
 const getInitials = (name = "", email = "") => {
@@ -76,13 +58,11 @@ function ClassCard({ item, isLecturer, isSelected, onAssignPress, onEdit, onDele
             {(item.className || "CL").slice(0, 2).toUpperCase()}
           </Text>
         </View>
-
         <View style={{ flex: 1 }}>
           <Text style={s.classCardName}>{item.className}</Text>
           {!!item.facultyName && <Text style={s.classCardFaculty}>{item.facultyName}</Text>}
-          {!!item.semester    && <Text style={s.classSemester}>{item.semester}</Text>}
+          {!!item.semester    && <Text style={s.classSemester}>Semester {item.semester}</Text>}
         </View>
-
         {isLecturer && (
           <View style={s.assignedPill}>
             <Text style={s.assignedPillText}>Assigned</Text>
@@ -92,26 +72,12 @@ function ClassCard({ item, isLecturer, isSelected, onAssignPress, onEdit, onDele
 
       {isPL && (
         <View style={s.cardActions}>
-          <TouchableOpacity
-            style={s.editBtn}
-            onPress={() => {
-              Alert.alert("🔘 Edit Clicked", `Editing class: ${item.className}`);
-              onEdit(item);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={s.editBtnText}>Edit</Text>
+         
+          <TouchableOpacity style={s.editBtn} onPress={() => onEdit(item)} activeOpacity={0.7}>
+            <Text style={s.editBtnText}> Edit</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={s.deleteBtn}
-            onPress={() => {
-              Alert.alert("🔘 Delete Clicked", `Delete button pressed for: ${item.className}`);
-              onDelete(item);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={s.deleteBtnText}>Delete</Text>
+          <TouchableOpacity style={s.deleteBtn} onPress={() => onDelete(item)} activeOpacity={0.7}>
+            <Text style={s.deleteBtnText}> Delete</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -138,7 +104,6 @@ function StudentRow({ student, isAssigned, isElsewhere, onAssign, onUnassign, on
       <View style={s.avatar}>
         <Text style={s.avatarText}>{initials}</Text>
       </View>
-
       <View style={{ flex: 1 }}>
         <Text style={s.studentName}>{student.username || student.email}</Text>
         {student.username && student.email && (
@@ -165,23 +130,18 @@ function StudentRow({ student, isAssigned, isElsewhere, onAssign, onUnassign, on
 }
 
 export default function ClassScheduleScreen() {
-  const [fetching, setFetching] = useState(true);
-  const [loading,  setLoading]  = useState(false);
-  const [userRole, setUserRole] = useState(null);
-
+  const [fetching,  setFetching]  = useState(true);
+  const [loading,   setLoading]   = useState(false);
+  const [userRole,  setUserRole]  = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [students,  setStudents]  = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-
   const [selectedClassId,   setSelectedClassId]   = useState(null);
   const [selectedClassName, setSelectedClassName] = useState("");
-
   const [assignedMap, setAssignedMap] = useState({});
-
   const [className,   setClassName]   = useState("");
   const [facultyName, setFacultyName] = useState("");
   const [semester,    setSemester]    = useState("");
-
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingClass,     setEditingClass]     = useState(null);
   const [editClassName,    setEditClassName]    = useState("");
@@ -267,10 +227,9 @@ export default function ClassScheduleScreen() {
       });
       if (response.data.success) {
         setSchedules(prev =>
-          prev.map(c =>
-            c.id === editingClass.id
-              ? { ...c, className: editClassName, facultyName: editFacultyName, semester: editSemester }
-              : c
+          prev.map(c => c.id === editingClass.id
+            ? { ...c, className: editClassName, facultyName: editFacultyName, semester: editSemester }
+            : c
           )
         );
         setEditModalVisible(false);
@@ -284,22 +243,19 @@ export default function ClassScheduleScreen() {
     }
   };
 
-  // DELETE CLASS WITH FULL ALERTS
   const handleDeleteClass = (classItem) => {
     Alert.alert(
-      "⚠️ Delete Class",
-      `Delete "${classItem.className}"? This will remove all students and courses.`,
+      "Delete Class",
+      `Delete "${classItem.className}"?\n\nThis will unassign all students and unlink all courses.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            Alert.alert("⏳ Processing", `Deleting class ${classItem.id}...`);
+            setLoading(true);
             try {
-              console.log("DELETE REQUEST SENT FOR:", classItem.id);
               const response = await api.delete(`/classes/${classItem.id}`);
-              console.log("DELETE RESPONSE:", response.data);
               if (response.data.success) {
                 setSchedules(prev => prev.filter(c => c.id !== classItem.id));
                 if (selectedClassId === classItem.id) {
@@ -308,13 +264,12 @@ export default function ClassScheduleScreen() {
                   setStudents([]);
                   setAssignedMap({});
                 }
-                Alert.alert("✅ Success", response.data.message);
-              } else {
-                Alert.alert("❌ Error", response.data.error);
+                Alert.alert("Deleted", response.data.message);
               }
             } catch (error) {
-              console.log("DELETE ERROR:", error);
-              Alert.alert("❌ Error", error.response?.data?.error || "Failed to delete class");
+              Alert.alert("Error", error.response?.data?.error || "Failed to delete class");
+            } finally {
+              setLoading(false);
             }
           },
         },
@@ -327,20 +282,18 @@ export default function ClassScheduleScreen() {
       const response = await api.post("/classes/assign", { studentId, classId });
       if (response.data.success) {
         setAssignedMap(prev => ({ ...prev, [studentId]: classId }));
-        setStudents(prev =>
-          prev.map(s => s.id === studentId ? { ...s, classId } : s)
-        );
-        Alert.alert("✅ Success", "Student assigned successfully");
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, classId } : s));
       }
     } catch (error) {
-      Alert.alert("❌ Error", error.response?.data?.error || "Failed to assign student");
+      Alert.alert("Error", error.response?.data?.error || "Failed to assign student");
     }
   };
 
+  // Fixed: single confirmation alert, no debug alerts
   const handleUnassignStudent = (student) => {
     const name = student.username || student.email;
     Alert.alert(
-      "⚠️ Unassign Student",
+      "Unassign Student",
       `Remove ${name} from this class?`,
       [
         { text: "Cancel", style: "cancel" },
@@ -359,10 +312,9 @@ export default function ClassScheduleScreen() {
                 setStudents(prev =>
                   prev.map(s => s.id === student.id ? { ...s, classId: null } : s)
                 );
-                Alert.alert("✅ Success", "Student unassigned successfully");
               }
             } catch (error) {
-              Alert.alert("❌ Error", error.response?.data?.error || "Failed to unassign student");
+              Alert.alert("Error", error.response?.data?.error || "Failed to unassign student");
             }
           },
         },
@@ -373,7 +325,7 @@ export default function ClassScheduleScreen() {
   const handleMoveStudent = (student, classId) => {
     const name = student.username || student.email;
     Alert.alert(
-      "⚠️ Move Student",
+      "Move Student",
       `Move ${name} to "${selectedClassName}"?`,
       [
         { text: "Cancel", style: "cancel" },
@@ -387,10 +339,9 @@ export default function ClassScheduleScreen() {
                 setStudents(prev =>
                   prev.map(s => s.id === student.id ? { ...s, classId } : s)
                 );
-                Alert.alert("✅ Success", `Student moved to ${selectedClassName}`);
               }
             } catch (error) {
-              Alert.alert("❌ Error", error.response?.data?.error || "Failed to move student");
+              Alert.alert("Error", error.response?.data?.error || "Failed to move student");
             }
           },
         },
@@ -445,6 +396,13 @@ export default function ClassScheduleScreen() {
         </Text>
       </View>
 
+      {/* Loading overlay */}
+      {loading && (
+        <View style={s.loadingOverlay}>
+          <ActivityIndicator size="large" color={C.navy} />
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
         <SectionLabel text={isLecturer ? "Your Assigned Classes" : "All Classes"} />
 
@@ -477,7 +435,6 @@ export default function ClassScheduleScreen() {
         {isPL && selectedClassId && (
           <>
             <SectionLabel text={`Students — ${selectedClassName}`} />
-
             <View style={s.searchContainer}>
               <TextInput
                 style={s.searchInput}
@@ -502,7 +459,6 @@ export default function ClassScheduleScreen() {
                   {filteredStudents.length} / {students.length} total
                 </Text>
               </View>
-
               {filteredStudents.length === 0 ? (
                 <Text style={s.noResults}>
                   {students.length === 0 ? "No students found." : "No students match your search."}
@@ -554,7 +510,7 @@ export default function ClassScheduleScreen() {
             <Text style={s.modalTitle}>Edit Class</Text>
             <Field label="Class Name" value={editClassName}   onChangeText={setEditClassName}   placeholder="Class Name" />
             <Field label="Faculty"    value={editFacultyName} onChangeText={setEditFacultyName} placeholder="Faculty" />
-            <Field label="Semester"   value={editSemester}    onChangeText={setEditSemester}    placeholder="Semester" />
+            <Field label="Semester"   value={editSemester}    onChangeText={setEditSemester}    placeholder="e.g. 2" />
             <View style={s.modalButtons}>
               <TouchableOpacity style={s.cancelModalBtn} onPress={() => setEditModalVisible(false)}>
                 <Text style={s.cancelModalBtnText}>Cancel</Text>
@@ -575,87 +531,73 @@ export default function ClassScheduleScreen() {
 }
 
 const s = StyleSheet.create({
-  screen:   { flex: 1, backgroundColor: C.bg },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg },
-
-  header: { backgroundColor: C.navy, paddingTop: 52, paddingBottom: 24, paddingHorizontal: 24 },
-  eyebrow: { fontSize: 11, fontWeight: "600", letterSpacing: 1.2, color: C.gold, textTransform: "uppercase", marginBottom: 6 },
-  headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
-  headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)" },
-
-  body: { padding: 16, paddingBottom: 48 },
-
-  sectionLabel: { fontSize: 11, fontWeight: "600", letterSpacing: 1, color: C.muted, textTransform: "uppercase", marginTop: 20, marginBottom: 10 },
-
-  classCard:         { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 16, marginBottom: 10 },
-  classCardSelected: { borderColor: C.navy, borderLeftWidth: 3, borderLeftColor: C.gold },
-  classCardHeader:   { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 },
-  classInitials:     { width: 40, height: 40, borderRadius: 10, backgroundColor: C.navy, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  classInitialsText: { fontSize: 13, fontWeight: "700", color: C.gold },
-  classCardName:     { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 2 },
-  classCardFaculty:  { fontSize: 12, color: C.muted },
-  classSemester:     { fontSize: 11, color: C.gold, marginTop: 2 },
-  assignedPill:      { backgroundColor: C.greenBg, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  assignedPillText:  { fontSize: 11, fontWeight: "600", color: C.green },
-
-  cardActions: { flexDirection: "row", gap: 8, marginBottom: 10 },
-  editBtn:     { flex: 1, paddingVertical: 10, backgroundColor: C.badge, borderRadius: 8, borderWidth: 1, borderColor: C.border, alignItems: "center" },
-  editBtnText: { fontSize: 13, fontWeight: "700", color: C.navy },
-  deleteBtn:   { flex: 1, paddingVertical: 10, backgroundColor: C.redBg, borderRadius: 8, borderWidth: 1, borderColor: "#fca5a5", alignItems: "center" },
-  deleteBtnText: { fontSize: 13, fontWeight: "700", color: C.red },
-
-  assignToggleBtn:        { backgroundColor: C.badge, borderRadius: 8, paddingVertical: 10, alignItems: "center", borderWidth: 1, borderColor: C.border },
-  assignToggleBtnActive:  { backgroundColor: C.navy, borderColor: C.navy },
-  assignToggleText:       { fontSize: 12, fontWeight: "600", color: C.navy },
-  assignToggleTextActive: { color: C.white },
-
-  searchContainer: { flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, marginBottom: 10 },
-  searchInput:     { flex: 1, paddingVertical: 11, fontSize: 14, color: C.text },
-  clearSearch:     { fontSize: 12, fontWeight: "600", color: C.muted, paddingLeft: 8 },
-
-  emptyCard:  { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 28, alignItems: "center", marginBottom: 10 },
-  emptyTitle: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
-  emptyText:  { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
-
-  studentPanel: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, overflow: "hidden", marginBottom: 10 },
-  panelHeader:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border },
-  panelHeaderTitle: { fontSize: 13, fontWeight: "700", color: C.text },
-  panelHeaderCount: { fontSize: 12, color: C.muted },
-  noResults: { fontSize: 13, color: C.muted, textAlign: "center", padding: 20 },
-
-  studentRow:    { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.border, gap: 10 },
-  avatar:        { width: 32, height: 32, borderRadius: 16, backgroundColor: C.badge, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  avatarText:    { fontSize: 11, fontWeight: "600", color: C.navy },
-  studentName:   { fontSize: 13, fontWeight: "600", color: C.text },
-  studentEmail:  { fontSize: 11, color: C.muted, marginTop: 1 },
-  elsewhereText: { fontSize: 11, color: C.gold, marginTop: 2, fontWeight: "500" },
-
-  assignBtn:     { backgroundColor: C.navy, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, flexShrink: 0 },
-  assignBtnText: { fontSize: 12, fontWeight: "600", color: C.white },
-  unassignBtn:     { backgroundColor: C.redBg, borderWidth: 1, borderColor: "#fca5a5", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexShrink: 0 },
-  unassignBtnText: { fontSize: 12, fontWeight: "600", color: C.red },
-  moveBtn:     { backgroundColor: "#fffbeb", borderWidth: 1, borderColor: "#fde68a", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexShrink: 0 },
-  moveBtnText: { fontSize: 12, fontWeight: "600", color: "#92400e" },
-
-  formSection:     { flexDirection: "row", alignItems: "center", marginTop: 24, marginBottom: 12, gap: 10 },
-  formSectionText: { fontSize: 11, fontWeight: "700", letterSpacing: 1, color: C.navy, textTransform: "uppercase", flexShrink: 0 },
-  formSectionLine: { flex: 1, height: 1, backgroundColor: C.border },
-
-  formCard:      { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 16 },
-  field:         { marginBottom: 14 },
-  fieldLabel:    { fontSize: 12, fontWeight: "600", color: C.text, marginBottom: 6 },
-  input:         { backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: C.text },
-  inputReadonly: { backgroundColor: C.badge, color: C.muted },
-
-  submitBtn:  { backgroundColor: C.navy, borderRadius: 12, padding: 16, alignItems: "center", marginTop: 4 },
-  submitText: { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
-
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
-  modalContent: { backgroundColor: C.card, borderRadius: 16, padding: 20, width: "90%" },
-  modalTitle:   { fontSize: 20, fontWeight: "bold", color: C.navy, marginBottom: 16, textAlign: "center" },
-  modalButtons: { flexDirection: "row", gap: 12, marginTop: 20 },
-  cancelModalBtn:     { flex: 1, padding: 12, borderRadius: 8, backgroundColor: C.bg, alignItems: "center", borderWidth: 1, borderColor: C.border },
-  cancelModalBtnText: { color: C.muted, fontWeight: "600" },
-  saveModalBtn:     { flex: 1, padding: 12, borderRadius: 8, backgroundColor: C.navy, alignItems: "center" },
-  saveModalBtnText: { color: C.white, fontWeight: "600" },
+  screen:{ flex:1, backgroundColor:C.bg },
+  centered:{ flex:1, justifyContent:"center", alignItems:"center", backgroundColor:C.bg },
+  loadingOverlay:{ position:"absolute", top:0, left:0, right:0, bottom:0, backgroundColor:"rgba(255,255,255,0.7)", justifyContent:"center", alignItems:"center", zIndex:99 },
+  header:{ backgroundColor:C.navy, paddingTop:52, paddingBottom:24, paddingHorizontal:24 },
+  eyebrow:{ fontSize:11, fontWeight:"600", letterSpacing:1.2, color:C.gold, textTransform:"uppercase", marginBottom:6 },
+  headerTitle:{ fontSize:26, fontWeight:"700", color:C.white, marginBottom:4 },
+  headerSub:{ fontSize:13, color:"rgba(255,255,255,0.5)" },
+  body:{ padding:16, paddingBottom:48 },
+  sectionLabel:{ fontSize:11, fontWeight:"600", letterSpacing:1, color:C.muted, textTransform:"uppercase", marginTop:20, marginBottom:10 },
+  classCard:{ backgroundColor:C.card, borderWidth:1, borderColor:C.border, borderRadius:14, padding:16, marginBottom:10 },
+  classCardSelected:{ borderColor:C.navy, borderLeftWidth:3, borderLeftColor:C.gold },
+  classCardHeader:{ flexDirection:"row", alignItems:"center", gap:12, marginBottom:10 },
+  classInitials:{ width:40, height:40, borderRadius:10, backgroundColor:C.navy, alignItems:"center", justifyContent:"center", flexShrink:0 },
+  classInitialsText:{ fontSize:13, fontWeight:"700", color:C.gold },
+  classCardName:{ fontSize:15, fontWeight:"700", color:C.text, marginBottom:2 },
+  classCardFaculty:{ fontSize:12, color:C.muted },
+  classSemester:{ fontSize:11, color:C.gold, marginTop:2 },
+  assignedPill:{ backgroundColor:C.greenBg, borderRadius:20, paddingHorizontal:10, paddingVertical:4 },
+  assignedPillText:{ fontSize:11, fontWeight:"600", color:C.green },
+  cardActions:{ flexDirection:"row", gap:8, marginBottom:10 },
+  editBtn:{ flex:1, paddingVertical:10, backgroundColor:C.badge, borderRadius:8, borderWidth:1, borderColor:C.border, alignItems:"center" },
+  editBtnText:{ fontSize:13, fontWeight:"700", color:C.navy },
+  deleteBtn:{ flex:1, paddingVertical:10, backgroundColor:C.redBg, borderRadius:8, borderWidth:1, borderColor:"#fca5a5", alignItems:"center" },
+  deleteBtnText:{ fontSize:13, fontWeight:"700", color:C.red },
+  assignToggleBtn:{ backgroundColor:C.badge, borderRadius:8, paddingVertical:10, alignItems:"center", borderWidth:1, borderColor:C.border },
+  assignToggleBtnActive:{ backgroundColor:C.navy, borderColor:C.navy },
+  assignToggleText:{ fontSize:12, fontWeight:"600", color:C.navy },
+  assignToggleTextActive:{ color:C.white },
+  searchContainer:{ flexDirection:"row", alignItems:"center", backgroundColor:C.card, borderWidth:1, borderColor:C.border, borderRadius:10, paddingHorizontal:14, marginBottom:10 },
+  searchInput:{ flex:1, paddingVertical:11, fontSize:14, color:C.text },
+  clearSearch:{ fontSize:12, fontWeight:"600", color:C.muted, paddingLeft:8 },
+  emptyCard:{ backgroundColor:C.card, borderWidth:1, borderColor:C.border, borderRadius:14, padding:28, alignItems:"center", marginBottom:10 },
+  emptyTitle:{ fontSize:15, fontWeight:"700", color:C.text, marginBottom:6, textAlign:"center" },
+  emptyText:{ fontSize:13, color:C.muted, textAlign:"center", lineHeight:20 },
+  studentPanel:{ backgroundColor:C.card, borderWidth:1, borderColor:C.border, borderRadius:14, overflow:"hidden", marginBottom:10 },
+  panelHeader:{ flexDirection:"row", alignItems:"center", justifyContent:"space-between", padding:14, borderBottomWidth:1, borderBottomColor:C.border },
+  panelHeaderTitle:{ fontSize:13, fontWeight:"700", color:C.text },
+  panelHeaderCount:{ fontSize:12, color:C.muted },
+  noResults:{ fontSize:13, color:C.muted, textAlign:"center", padding:20 },
+  studentRow:{ flexDirection:"row", alignItems:"center", paddingVertical:12, paddingHorizontal:14, borderBottomWidth:1, borderBottomColor:C.border, gap:10 },
+  avatar:{ width:32, height:32, borderRadius:16, backgroundColor:C.badge, alignItems:"center", justifyContent:"center", flexShrink:0 },
+  avatarText:{ fontSize:11, fontWeight:"600", color:C.navy },
+  studentName:{ fontSize:13, fontWeight:"600", color:C.text },
+  studentEmail:{ fontSize:11, color:C.muted, marginTop:1 },
+  elsewhereText:{ fontSize:11, color:C.gold, marginTop:2, fontWeight:"500" },
+  assignBtn:{ backgroundColor:C.navy, paddingHorizontal:14, paddingVertical:8, borderRadius:8, flexShrink:0 },
+  assignBtnText:{ fontSize:12, fontWeight:"600", color:C.white },
+  unassignBtn:{ backgroundColor:C.redBg, borderWidth:1, borderColor:"#fca5a5", paddingHorizontal:12, paddingVertical:8, borderRadius:8, flexShrink:0 },
+  unassignBtnText:{ fontSize:12, fontWeight:"600", color:C.red },
+  moveBtn:{ backgroundColor:"#fffbeb", borderWidth:1, borderColor:"#fde68a", paddingHorizontal:12, paddingVertical:8, borderRadius:8, flexShrink:0 },
+  moveBtnText:{ fontSize:12, fontWeight:"600", color:"#92400e" },
+  formSection:{ flexDirection:"row", alignItems:"center", marginTop:24, marginBottom:12, gap:10 },
+  formSectionText:{ fontSize:11, fontWeight:"700", letterSpacing:1, color:C.navy, textTransform:"uppercase", flexShrink:0 },
+  formSectionLine:{ flex:1, height:1, backgroundColor:C.border },
+  formCard:{ backgroundColor:C.card, borderWidth:1, borderColor:C.border, borderRadius:14, padding:16 },
+  field:{ marginBottom:14 },
+  fieldLabel:{ fontSize:12, fontWeight:"600", color:C.text, marginBottom:6 },
+  input:{ backgroundColor:C.bg, borderWidth:1, borderColor:C.border, borderRadius:10, paddingHorizontal:14, paddingVertical:12, fontSize:14, color:C.text },
+  inputReadonly:{ backgroundColor:C.badge, color:C.muted },
+  submitBtn:{ backgroundColor:C.navy, borderRadius:12, padding:16, alignItems:"center", marginTop:4 },
+  submitText:{ color:C.white, fontWeight:"700", fontSize:14, letterSpacing:0.4 },
+  modalOverlay:{ flex:1, backgroundColor:"rgba(0,0,0,0.5)", justifyContent:"center", alignItems:"center" },
+  modalContent:{ backgroundColor:C.card, borderRadius:16, padding:20, width:"90%" },
+  modalTitle:{ fontSize:20, fontWeight:"bold", color:C.navy, marginBottom:16, textAlign:"center" },
+  modalButtons:{ flexDirection:"row", gap:12, marginTop:20 },
+  cancelModalBtn:{ flex:1, padding:12, borderRadius:8, backgroundColor:C.bg, alignItems:"center", borderWidth:1, borderColor:C.border },
+  cancelModalBtnText:{ color:C.muted, fontWeight:"600" },
+  saveModalBtn:{ flex:1, padding:12, borderRadius:8, backgroundColor:C.navy, alignItems:"center" },
+  saveModalBtnText:{ color:C.white, fontWeight:"600" },
 });

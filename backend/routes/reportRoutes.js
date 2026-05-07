@@ -16,7 +16,7 @@ router.get('/pending', getPendingReports);
 router.get('/reviewed', getReviewedReports);
 router.get('/my', getMyReports);
 router.get('/export', exportReportsToExcel);
-router.get('/export/pdf', exportReportsToPDF);  // Pure PDF endpoint
+router.get('/export/pdf', exportReportsToPDF);  
 router.post('/', createReport);
 router.put('/:reportId/feedback', updateReportFeedback);
 

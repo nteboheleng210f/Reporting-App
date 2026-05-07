@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 
-// ✅ Fixed: import getTimetable not getUpcomingClass
+
 const { getStudentStats, getTimetable } = require('../controllers/studentDashboardController');
 
 router.use((req, res, next) => {
@@ -11,6 +11,5 @@ router.use((req, res, next) => {
 });
 
 router.get('/stats',     getStudentStats);
-router.get('/timetable', getTimetable);   // ✅ was missing, caused 404
-
+router.get('/timetable', getTimetable);   
 module.exports = router;
