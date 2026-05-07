@@ -2,7 +2,6 @@ const { db } = require('../config/firebase');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 
-
 const createReport = async (req, res) => {
   try {
     const {
@@ -23,11 +22,10 @@ const createReport = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Week number is required' });
     }
 
-    
     const existingSnap = await db.collection('lectureReports')
       .where('lecturerId', '==', lecturerId)
       .where('courseCode', '==', courseCode || '')
-      .where('week',       '==', Number(week))
+      .where('week', '==', Number(week))
       .get();
 
     if (!existingSnap.empty) {
@@ -73,7 +71,6 @@ const createReport = async (req, res) => {
   }
 };
 
-
 const getReports = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
@@ -83,7 +80,6 @@ const getReports = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 const getMyReports = async (req, res) => {
   try {
@@ -101,7 +97,6 @@ const getMyReports = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 const updateReportFeedback = async (req, res) => {
   try {
@@ -134,7 +129,6 @@ const updateReportFeedback = async (req, res) => {
   }
 };
 
-
 const markRequiresRevision = async (req, res) => {
   try {
     const { reportId } = req.params;
@@ -159,7 +153,6 @@ const markRequiresRevision = async (req, res) => {
   }
 };
 
-
 const getPendingReports = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports')
@@ -172,7 +165,6 @@ const getPendingReports = async (req, res) => {
   }
 };
 
-// reviewed reports 
 const getReviewedReports = async (req, res) => {
   try {
     const snapshot = await db.collection('lectureReports')
@@ -185,236 +177,231 @@ const getReviewedReports = async (req, res) => {
   }
 };
 
-
-const exportReportsToExcel = async (req, res) => {
+const exportSingleReportToExcel = async (req, res) => {
   try {
-    const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
-    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    const workbook  = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Lecture Reports');
-
+    const { reportId } = req.params;
+    
+    const docSnap = await db.collection('lectureReports').doc(reportId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+    
+    const report = { id: docSnap.id, ...docSnap.data() };
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Lecture Report');
+    
     worksheet.columns = [
-      { header: 'Course Name',       key: 'courseName',       width: 30 },
-      { header: 'Course Code',       key: 'courseCode',       width: 15 },
-      { header: 'Lecturer',          key: 'lecturerName',     width: 25 },
-      { header: 'Faculty',           key: 'facultyName',      width: 20 },
-      { header: 'Class',             key: 'className',        width: 15 },
-      { header: 'Topic',             key: 'topic',            width: 40 },
-      { header: 'Week',              key: 'week',             width: 10 },
-      { header: 'Date',              key: 'date',             width: 15 },
-      { header: 'Venue',             key: 'venue',            width: 20 },
-      { header: 'Time',              key: 'scheduledTime',    width: 15 },
-      { header: 'Present',           key: 'actualPresent',    width: 10 },
-      { header: 'Registered',        key: 'totalRegistered',  width: 12 },
-      { header: 'Status',            key: 'status',           width: 15 },
-      { header: 'Requires Revision', key: 'requiresRevision', width: 18 },
-      { header: 'PRL Feedback',      key: 'prlFeedback',      width: 40 },
-      { header: 'Revision Notes',    key: 'revisionNotes',    width: 40 },
+      { header: 'Field', key: 'field', width: 30 },
+      { header: 'Value', key: 'value', width: 50 },
     ];
-
-    reports.forEach(report => {
-      worksheet.addRow({
-        courseName:       report.courseName       || '',
-        courseCode:       report.courseCode       || '',
-        lecturerName:     report.lecturerName     || '',
-        facultyName:      report.facultyName      || '',
-        className:        report.className        || '',
-        topic:            report.topic            || '',
-        week:             report.week             || '',
-        date:             report.date             || '',
-        venue:            report.venue            || '',
-        scheduledTime:    report.scheduledTime    || '',
-        actualPresent:    report.actualPresent    || 0,
-        totalRegistered:  report.totalRegistered  || 0,
-        status:           report.status           || 'pending',
-        requiresRevision: report.requiresRevision ? 'Yes' : 'No',
-        prlFeedback:      report.prlFeedback      || '',
-        revisionNotes:    report.revisionNotes    || '',
-      });
-    });
-
+    
+    worksheet.addRow({ field: 'Course Name', value: report.courseName || '' });
+    worksheet.addRow({ field: 'Course Code', value: report.courseCode || '' });
+    worksheet.addRow({ field: 'Lecturer', value: report.lecturerName || '' });
+    worksheet.addRow({ field: 'Faculty', value: report.facultyName || '' });
+    worksheet.addRow({ field: 'Class', value: report.className || '' });
+    worksheet.addRow({ field: 'Topic', value: report.topic || '' });
+    worksheet.addRow({ field: 'Week', value: report.week || '' });
+    worksheet.addRow({ field: 'Date', value: report.date || '' });
+    worksheet.addRow({ field: 'Venue', value: report.venue || '' });
+    worksheet.addRow({ field: 'Time', value: report.scheduledTime || '' });
+    worksheet.addRow({ field: 'Present', value: report.actualPresent || 0 });
+    worksheet.addRow({ field: 'Registered', value: report.totalRegistered || 0 });
+    worksheet.addRow({ field: 'Status', value: report.status || 'pending' });
+    worksheet.addRow({ field: 'PRL Feedback', value: report.prlFeedback || '' });
+    worksheet.addRow({ field: 'Revision Notes', value: report.revisionNotes || '' });
+    worksheet.addRow({ field: 'Learning Outcomes', value: report.outcomes || '' });
+    worksheet.addRow({ field: 'Recommendations', value: report.recommendations || '' });
+    
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = {
       type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F1F3D' }
     };
-    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-
+    
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.xlsx');
+    res.setHeader('Content-Disposition', `attachment; filename=report_${report.courseCode}_week${report.week}.xlsx`);
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
-    console.error('Export reports error:', error);
+    console.error('Export single report error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-const exportReportsToPDF = async (req, res) => {
+const exportSingleReportToPDF = async (req, res) => {
   try {
-    console.log('Starting PDF generation...');
+    const { reportId } = req.params;
     
+    const docSnap = await db.collection('lectureReports').doc(reportId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+    
+    const report = { id: docSnap.id, ...docSnap.data() };
+    
+    const doc = new PDFDocument({ margin: 50, size: 'A4', layout: 'portrait' });
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=report_${report.courseCode}_week${report.week}.pdf`);
+    
+    doc.pipe(res);
+    
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#2563eb').text('Lecture Report', { align: 'center' }).moveDown(1);
+    doc.fontSize(14).font('Helvetica-Bold').text(`Course: ${report.courseName || 'N/A'} (${report.courseCode || 'N/A'})`).moveDown(0.5);
+    doc.fontSize(12).font('Helvetica').text(`Lecturer: ${report.lecturerName || 'N/A'}`).moveDown(0.3);
+    doc.text(`Faculty: ${report.facultyName || 'N/A'}`).moveDown(0.3);
+    doc.text(`Class: ${report.className || 'N/A'}`).moveDown(0.3);
+    doc.text(`Topic: ${report.topic || 'N/A'}`).moveDown(0.3);
+    doc.text(`Week: ${report.week || 'N/A'}`).moveDown(0.3);
+    doc.text(`Date: ${report.date || 'N/A'}`).moveDown(0.3);
+    doc.text(`Venue: ${report.venue || 'N/A'}`).moveDown(0.3);
+    doc.text(`Time: ${report.scheduledTime || 'N/A'}`).moveDown(0.5);
+    
+    const attendancePercent = report.totalRegistered > 0 ? (report.actualPresent / report.totalRegistered) * 100 : 0;
+    doc.text(`Attendance: ${report.actualPresent || 0}/${report.totalRegistered || 0} (${attendancePercent.toFixed(1)}%)`).moveDown(0.5);
+    
+    let statusColor = '#f59e0b';
+    let statusText = 'Pending';
+    if (report.status === 'reviewed') {
+      statusColor = '#10b981';
+      statusText = 'Reviewed';
+    } else if (report.status === 'needs_revision') {
+      statusColor = '#ef4444';
+      statusText = 'Needs Revision';
+    }
+    
+    doc.fillColor(statusColor).text(`Status: ${statusText}`).moveDown(0.5);
+    doc.fillColor('#333333');
+    
+    if (report.outcomes) {
+      doc.fontSize(11).font('Helvetica-Bold').text('Learning Outcomes:', { underline: true }).moveDown(0.3);
+      doc.fontSize(10).font('Helvetica').text(report.outcomes).moveDown(0.5);
+    }
+    
+    if (report.recommendations) {
+      doc.fontSize(11).font('Helvetica-Bold').text('Recommendations:', { underline: true }).moveDown(0.3);
+      doc.fontSize(10).font('Helvetica').text(report.recommendations).moveDown(0.5);
+    }
+    
+    if (report.prlFeedback) {
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#2563eb').text('PRL Feedback:', { underline: true }).moveDown(0.3);
+      doc.fontSize(10).font('Helvetica').fillColor('#333333').text(report.prlFeedback).moveDown(0.5);
+    }
+    
+    if (report.revisionNotes) {
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#ef4444').text('Revision Notes:', { underline: true }).moveDown(0.3);
+      doc.fontSize(10).font('Helvetica').fillColor('#333333').text(report.revisionNotes);
+    }
+    
+    doc.end();
+  } catch (error) {
+    console.error('Export single PDF error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const exportAllReportsToExcel = async (req, res) => {
+  try {
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
     const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
-    console.log(`Found ${reports.length} reports to export`);
-
-    // Create a new PDF document
-    const doc = new PDFDocument({ 
-      margin: 50,
-      size: 'A4',
-      layout: 'portrait'
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('All Lecture Reports');
+    
+    worksheet.columns = [
+      { header: 'Course Name', key: 'courseName', width: 30 },
+      { header: 'Course Code', key: 'courseCode', width: 15 },
+      { header: 'Lecturer', key: 'lecturerName', width: 25 },
+      { header: 'Faculty', key: 'facultyName', width: 20 },
+      { header: 'Class', key: 'className', width: 15 },
+      { header: 'Topic', key: 'topic', width: 40 },
+      { header: 'Week', key: 'week', width: 10 },
+      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Venue', key: 'venue', width: 20 },
+      { header: 'Time', key: 'scheduledTime', width: 15 },
+      { header: 'Present', key: 'actualPresent', width: 10 },
+      { header: 'Registered', key: 'totalRegistered', width: 12 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'PRL Feedback', key: 'prlFeedback', width: 40 },
+      { header: 'Revision Notes', key: 'revisionNotes', width: 40 },
+    ];
+    
+    reports.forEach(report => {
+      worksheet.addRow({
+        courseName: report.courseName || '',
+        courseCode: report.courseCode || '',
+        lecturerName: report.lecturerName || '',
+        facultyName: report.facultyName || '',
+        className: report.className || '',
+        topic: report.topic || '',
+        week: report.week || '',
+        date: report.date || '',
+        venue: report.venue || '',
+        scheduledTime: report.scheduledTime || '',
+        actualPresent: report.actualPresent || 0,
+        totalRegistered: report.totalRegistered || 0,
+        status: report.status || 'pending',
+        prlFeedback: report.prlFeedback || '',
+        revisionNotes: report.revisionNotes || '',
+      });
     });
     
-    // Set response headers
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=lecture_reports.pdf');
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F1F3D' }
+    };
     
-    // Pipe PDF to response
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=all_reports.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Export all reports error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const exportAllReportsToPDF = async (req, res) => {
+  try {
+    const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
+    const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    const doc = new PDFDocument({ margin: 50, size: 'A4', layout: 'portrait' });
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=all_reports.pdf');
+    
     doc.pipe(res);
     
-    // Add header
-    doc.fontSize(25)
-       .font('Helvetica-Bold')
-       .fillColor('#2563eb')
-       .text('Lecture Reports', { align: 'center' })
-       .moveDown(0.5);
+    doc.fontSize(25).font('Helvetica-Bold').fillColor('#2563eb').text('All Lecture Reports', { align: 'center' }).moveDown(1);
+    doc.fontSize(10).fillColor('#666666').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' }).moveDown(1);
+    doc.fontSize(14).font('Helvetica-Bold').text(`Total Reports: ${reports.length}`, { align: 'center' }).moveDown(1);
     
-    doc.fontSize(12)
-       .font('Helvetica')
-       .fillColor('#666666')
-       .text('Academic Performance Reports', { align: 'center' })
-       .moveDown(0.5);
+    doc.strokeColor('#2563eb').lineWidth(2).moveTo(50, doc.y).lineTo(550, doc.y).stroke().moveDown(1);
     
-    doc.fontSize(10)
-       .fillColor('#999999')
-       .text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' })
-       .moveDown(1);
-    
-    // Add horizontal line
-    doc.strokeColor('#2563eb')
-       .lineWidth(2)
-       .moveTo(50, doc.y)
-       .lineTo(550, doc.y)
-       .stroke()
-       .moveDown(1);
-    
-    // Calculate statistics
-    const totalReports = reports.length;
-    const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
-    const pendingReports = reports.filter(r => r.status === 'pending').length;
-    const needsRevisionReports = reports.filter(r => r.status === 'needs_revision').length;
-    const totalAttendance = reports.reduce((sum, r) => sum + (r.actualPresent || 0), 0);
-    const totalStudents = reports.reduce((sum, r) => sum + (r.totalRegistered || 0), 0);
-    const avgAttendance = totalStudents > 0 ? ((totalAttendance / totalStudents) * 100).toFixed(1) : 0;
-    
-    // Summary section
-    doc.fontSize(16)
-       .font('Helvetica-Bold')
-       .fillColor('#2563eb')
-       .text('Summary Statistics', { underline: true })
-       .moveDown(0.5);
-    
-    doc.fontSize(11)
-       .font('Helvetica')
-       .fillColor('#333333');
-    
-    // Create a table for statistics
-    const startY = doc.y;
-    let currentY = startY;
-    
-    doc.text(`Total Reports: ${totalReports}`, 50, currentY);
-    doc.text(`Reviewed Reports: ${reviewedReports}`, 250, currentY);
-    doc.text(`Pending Reports: ${pendingReports}`, 450, currentY);
-    currentY += 20;
-    
-    doc.text(`Need Revision: ${needsRevisionReports}`, 50, currentY);
-    doc.text(`Average Attendance: ${avgAttendance}%`, 250, currentY);
-    currentY += 30;
-    
-    doc.moveDown(1);
-    
-    // Detailed Reports Section
-    doc.fontSize(16)
-       .font('Helvetica-Bold')
-       .fillColor('#2563eb')
-       .text('Detailed Reports', { underline: true })
-       .moveDown(0.5);
-    
-    // Loop through each report
-    reports.forEach((report, index) => {
-      // Check if we need a new page
+    let count = 0;
+    for (const report of reports) {
+      count++;
+      
       if (doc.y > 700) {
         doc.addPage();
       }
       
-      // Report header with index
-      doc.fontSize(14)
-         .font('Helvetica-Bold')
-         .fillColor('#2563eb')
-         .text(`${index + 1}. ${report.courseName || 'N/A'} (${report.courseCode || 'N/A'})`)
-         .moveDown(0.3);
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#2563eb').text(`${count}. ${report.courseName || 'N/A'} (${report.courseCode || 'N/A'})`).moveDown(0.3);
+      doc.fontSize(9).font('Helvetica').fillColor('#333333');
+      doc.text(`Lecturer: ${report.lecturerName || 'N/A'}`, 50, doc.y);
+      doc.text(`Week: ${report.week || 'N/A'}`, 300, doc.y);
+      doc.moveDown(0.3);
+      doc.text(`Topic: ${report.topic || 'N/A'}`, 50, doc.y);
+      doc.text(`Date: ${report.date || 'N/A'}`, 300, doc.y);
+      doc.moveDown(0.3);
       
-      // Report details in two columns
-      doc.fontSize(10)
-         .font('Helvetica')
-         .fillColor('#333333');
+      const attendancePercent = report.totalRegistered > 0 ? (report.actualPresent / report.totalRegistered) * 100 : 0;
+      doc.text(`Attendance: ${report.actualPresent || 0}/${report.totalRegistered || 0} (${attendancePercent.toFixed(1)}%)`, 50, doc.y);
       
-      // Left column
-      let leftX = 50;
-      let rightX = 300;
-      let lineHeight = 18;
-      let yPos = doc.y;
-      
-      doc.text(`Lecturer:`, leftX, yPos);
-      doc.text(`${report.lecturerName || 'N/A'}`, 120, yPos);
-      
-      doc.text(`Faculty:`, leftX, yPos + lineHeight);
-      doc.text(`${report.facultyName || 'N/A'}`, 120, yPos + lineHeight);
-      
-      doc.text(`Class:`, leftX, yPos + (lineHeight * 2));
-      doc.text(`${report.className || 'N/A'}`, 120, yPos + (lineHeight * 2));
-      
-      doc.text(`Topic:`, leftX, yPos + (lineHeight * 3));
-      doc.text(`${report.topic || 'N/A'}`, 120, yPos + (lineHeight * 3));
-      
-      doc.text(`Week:`, rightX, yPos);
-      doc.text(`${report.week || 'N/A'}`, 350, yPos);
-      
-      doc.text(`Date:`, rightX, yPos + lineHeight);
-      doc.text(`${report.date || 'N/A'}`, 350, yPos + lineHeight);
-      
-      doc.text(`Venue:`, rightX, yPos + (lineHeight * 2));
-      doc.text(`${report.venue || 'N/A'}`, 350, yPos + (lineHeight * 2));
-      
-      doc.text(`Time:`, rightX, yPos + (lineHeight * 3));
-      doc.text(`${report.scheduledTime || 'N/A'}`, 350, yPos + (lineHeight * 3));
-      
-      let newY = yPos + (lineHeight * 4);
-      
-
-      const attendancePercent = report.totalRegistered > 0 
-        ? (report.actualPresent / report.totalRegistered) * 100 
-        : 0;
-      
-      doc.text(`Attendance:`, leftX, newY);
-      doc.text(`${report.actualPresent || 0}/${report.totalRegistered || 0} (${attendancePercent.toFixed(1)}%)`, 120, newY);
-      
-     
-      const barWidth = 200;
-      const barHeight = 8;
-      doc.rect(120, newY + 12, barWidth, barHeight)
-         .fillColor('#e5e7eb')
-         .fill();
-      doc.rect(120, newY + 12, (attendancePercent / 100) * barWidth, barHeight)
-         .fillColor('#10b981')
-         .fill();
-      
-      newY += 25;
-      
-      // Status
       let statusColor = '#f59e0b';
       let statusText = 'Pending';
       if (report.status === 'reviewed') {
@@ -425,145 +412,64 @@ const exportReportsToPDF = async (req, res) => {
         statusText = 'Needs Revision';
       }
       
-      doc.text(`Status:`, leftX, newY);
-      doc.fillColor(statusColor)
-         .text(statusText, 120, newY);
+      doc.fillColor(statusColor).text(`Status: ${statusText}`, 300, doc.y - 12);
       doc.fillColor('#333333');
+      doc.moveDown(0.5);
       
-      newY += 20;
-      
-      // Learning Outcomes
-      if (report.outcomes) {
-        if (newY > 650) {
-          doc.addPage();
-          newY = 50;
-        }
-        doc.fontSize(10)
-           .font('Helvetica-Bold')
-           .text('Learning Outcomes:', leftX, newY);
-        doc.font('Helvetica')
-           .fontSize(9)
-           .text(report.outcomes, leftX + 100, newY, { width: 400 })
-           .moveDown(0.5);
-        newY = doc.y + 10;
-      }
-      
-      // Recommendations
-      if (report.recommendations) {
-        if (newY > 650) {
-          doc.addPage();
-          newY = 50;
-        }
-        doc.fontSize(10)
-           .font('Helvetica-Bold')
-           .text('Recommendations:', leftX, newY);
-        doc.font('Helvetica')
-           .fontSize(9)
-           .text(report.recommendations, leftX + 100, newY, { width: 400 })
-           .moveDown(0.5);
-        newY = doc.y + 10;
-      }
-      
-      // PRL Feedback
       if (report.prlFeedback) {
-        if (newY > 650) {
-          doc.addPage();
-          newY = 50;
-        }
-        doc.fontSize(10)
-           .font('Helvetica-Bold')
-           .fillColor('#2563eb')
-           .text('PRL Feedback:', leftX, newY);
-        doc.font('Helvetica')
-           .fontSize(9)
-           .fillColor('#333333')
-           .text(report.prlFeedback, leftX + 100, newY, { width: 400 })
-           .moveDown(0.5);
-        newY = doc.y + 10;
+        doc.fontSize(8).fillColor('#666666').text(`PRL Feedback: ${report.prlFeedback.substring(0, 100)}${report.prlFeedback.length > 100 ? '...' : ''}`, 50, doc.y, { width: 500 });
+        doc.moveDown(0.3);
       }
       
-      // Revision Notes
-      if (report.revisionNotes) {
-        if (newY > 650) {
-          doc.addPage();
-          newY = 50;
-        }
-        doc.fontSize(10)
-           .font('Helvetica-Bold')
-           .fillColor('#ef4444')
-           .text('Revision Notes:', leftX, newY);
-        doc.font('Helvetica')
-           .fontSize(9)
-           .fillColor('#333333')
-           .text(report.revisionNotes, leftX + 100, newY, { width: 400 })
-           .moveDown(0.5);
-        newY = doc.y + 10;
-      }
-      
-      // Separator line between reports
-      doc.moveDown(0.5)
-         .strokeColor('#e5e7eb')
-         .lineWidth(0.5)
-         .moveTo(50, newY + 10)
-         .lineTo(550, newY + 10)
-         .stroke()
-         .moveDown(1);
-    });
+      doc.strokeColor('#e5e7eb').lineWidth(0.5).moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+      doc.moveDown(0.5);
+    }
     
-    // Add footer
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
-      doc.fontSize(8)
-         .fillColor('#999999')
-         .text(
-           `Generated by Lecture Report System • Page ${i + 1} of ${pageCount}`,
-           50,
-           doc.page.height - 50,
-           { align: 'center', width: 500 }
-         );
+      doc.fontSize(8).fillColor('#999999').text(
+        `Generated by Lecture Report System • Page ${i + 1} of ${pageCount}`,
+        50,
+        doc.page.height - 50,
+        { align: 'center', width: 500 }
+      );
     }
     
-    // Finalize PDF
     doc.end();
-    console.log('PDF generated successfully');
-    
   } catch (error) {
-    console.error('PDF Export error:', error);
+    console.error('Export all PDF error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// ─── Export ratings to Excel ────────────────────────────────────────────
 const exportRatingsToExcel = async (req, res) => {
   try {
     const snapshot = await db.collection('ratings').orderBy('createdAt', 'desc').get();
-    const ratings  = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    const workbook  = new ExcelJS.Workbook();
+    const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Lecturer Ratings');
 
     worksheet.columns = [
-      { header: 'Lecturer',    key: 'lecturerName', width: 25 },
-      { header: 'Course',      key: 'courseName',   width: 30 },
-      { header: 'Course Code', key: 'courseCode',   width: 15 },
-      { header: 'Class',       key: 'className',    width: 15 },
-      { header: 'Student',     key: 'studentName',  width: 25 },
-      { header: 'Rating',      key: 'rating',       width: 10 },
-      { header: 'Comment',     key: 'comment',      width: 40 },
-      { header: 'Date',        key: 'createdAt',    width: 20 },
+      { header: 'Lecturer', key: 'lecturerName', width: 25 },
+      { header: 'Course', key: 'courseName', width: 30 },
+      { header: 'Course Code', key: 'courseCode', width: 15 },
+      { header: 'Class', key: 'className', width: 15 },
+      { header: 'Rating', key: 'rating', width: 10 },
+      { header: 'Comment', key: 'comment', width: 40 },
+      { header: 'Date', key: 'createdAt', width: 20 },
     ];
 
     ratings.forEach(r => {
       worksheet.addRow({
         lecturerName: r.lecturerName || '',
-        courseName:   r.courseName   || '',
-        courseCode:   r.courseCode   || '',
-        className:    r.className    || '',
-        studentName:  r.studentName  || '',
-        rating:       r.rating       || 0,
-        comment:      r.comment      || '',
-        createdAt:    r.createdAt
+        courseName: r.courseName || '',
+        courseCode: r.courseCode || '',
+        className: r.className || '',
+        rating: r.rating || 0,
+        comment: r.comment || '',
+        createdAt: r.createdAt
           ? new Date(r.createdAt).toLocaleDateString('en-GB', {
               day: 'numeric', month: 'short', year: 'numeric',
             })
@@ -580,8 +486,8 @@ const exportRatingsToExcel = async (req, res) => {
 
     const summarySheet = workbook.addWorksheet('Summary by Lecturer');
     summarySheet.columns = [
-      { header: 'Lecturer',    key: 'name',    width: 25 },
-      { header: 'Avg Rating',  key: 'average', width: 12 },
+      { header: 'Lecturer', key: 'name', width: 25 },
+      { header: 'Avg Rating', key: 'average', width: 12 },
       { header: 'Total Reviews', key: 'count', width: 14 },
     ];
 
@@ -596,9 +502,9 @@ const exportRatingsToExcel = async (req, res) => {
 
     Object.values(lecturerMap).forEach(l => {
       summarySheet.addRow({
-        name:    l.name,
+        name: l.name,
         average: (l.total / l.count).toFixed(1),
-        count:   l.count,
+        count: l.count,
       });
     });
 
@@ -618,7 +524,6 @@ const exportRatingsToExcel = async (req, res) => {
   }
 };
 
-// ─── Module Exports ──────────────────────────────────────────────────────────
 module.exports = {
   createReport,
   getReports,
@@ -627,7 +532,9 @@ module.exports = {
   markRequiresRevision,
   getPendingReports,
   getReviewedReports,
-  exportReportsToExcel,
-  exportReportsToPDF,
+  exportSingleReportToExcel,
+  exportSingleReportToPDF,
+  exportAllReportsToExcel,
+  exportAllReportsToPDF,
   exportRatingsToExcel,
 };

@@ -43,7 +43,6 @@ function StarPicker({ value, onChange }) {
   );
 }
 
-
 function CourseCard({ item, selected, onPress, canRate }) {
   return (
     <TouchableOpacity
@@ -57,7 +56,6 @@ function CourseCard({ item, selected, onPress, canRate }) {
     >
       <View style={{ flex: 1 }}>
         <Text style={s.courseTitle}>{item.courseName}</Text>
-
         <View style={s.lecturerRow}>
           <View style={s.lecturerAvatar}>
             <Text style={s.lecturerAvatarText}>
@@ -78,17 +76,14 @@ function CourseCard({ item, selected, onPress, canRate }) {
             </View>
           </View>
         </View>
-
-       
         {!canRate && (
           <View style={s.lockBanner}>
             <Text style={s.lockText}>
-               Attend at least one class to unlock rating
+              Attend at least one class to unlock rating
             </Text>
           </View>
         )}
       </View>
-
       {selected && canRate && (
         <View style={s.checkCircle}>
           <Text style={s.checkMark}>✓</Text>
@@ -99,8 +94,6 @@ function CourseCard({ item, selected, onPress, canRate }) {
 }
 
 function RatingCard({ item }) {
-  const initials = (item.studentName || "?")
-    .split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const dateStr = item.createdAt
     ? new Date(item.createdAt).toLocaleDateString("en-GB", {
         day: "numeric", month: "short", year: "numeric",
@@ -110,10 +103,10 @@ function RatingCard({ item }) {
     <View style={s.ratingCard}>
       <View style={s.ratingTop}>
         <View style={s.avatar}>
-          <Text style={s.avatarText}>{initials}</Text>
+          <Text style={s.avatarText}>👤</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.studentName}>{item.studentName || "Student"}</Text>
+          <Text style={s.studentName}>Anonymous Student</Text>
           <Text style={s.ratingMeta}>{item.courseName}</Text>
         </View>
         <View style={s.ratingBadge}>
@@ -163,7 +156,6 @@ function EmptyState({ icon, title, subtitle }) {
   );
 }
 
-
 function ConfirmModal({ visible, course, rating, comment, onConfirm, onCancel, submitting }) {
   if (!course) return null;
   return (
@@ -172,7 +164,6 @@ function ConfirmModal({ visible, course, rating, comment, onConfirm, onCancel, s
         <View style={s.modalCard}>
           <Text style={s.modalTitle}>Confirm Your Rating</Text>
           <Text style={s.modalSub}>Review before submitting</Text>
-
           <View style={s.modalRow}>
             <Text style={s.modalLabel}>Course</Text>
             <Text style={s.modalValue}>{course.courseName}</Text>
@@ -196,7 +187,6 @@ function ConfirmModal({ visible, course, rating, comment, onConfirm, onCancel, s
               <Text style={s.modalValue}>{comment}</Text>
             </View>
           )}
-
           <View style={s.modalBtns}>
             <TouchableOpacity
               style={s.modalCancelBtn}
@@ -221,6 +211,15 @@ function ConfirmModal({ visible, course, rating, comment, onConfirm, onCancel, s
   );
 }
 
+function AnonymityNotice() {
+  return (
+    <View style={s.anonymityNotice}>
+      <Text style={s.anonymityText}>
+        Your identity remains anonymous. Lecturers and administrators will never see your name.
+      </Text>
+    </View>
+  );
+}
 
 export default function RatingScreen() {
   const [role, setRole]                   = useState(null);
@@ -241,17 +240,13 @@ export default function RatingScreen() {
     return userRole;
   };
 
- 
   const loadStudentData = async () => {
     try {
       const [coursesRes, attendanceRes] = await Promise.all([
         api.get("/ratings/courses"),
         api.get("/attendance/student"),
       ]);
-
       if (coursesRes.data.success) setCourses(coursesRes.data.courses);
-
-     
       if (attendanceRes.data.success) {
         const ids = new Set(
           attendanceRes.data.attendance
@@ -279,7 +274,6 @@ export default function RatingScreen() {
     } catch (error) { console.log("Failed to load lecturer ratings:", error); }
   };
 
-
   const handleSubmitPress = () => {
     if (!selectedCourse) return Alert.alert("Select Course", "Please choose a course first.");
     if (!rating)         return Alert.alert("Rating Required", "Please select a star rating.");
@@ -299,10 +293,9 @@ export default function RatingScreen() {
         rating,
         comment: comment.trim(),
       });
-
       if (response.data.success) {
         setShowConfirm(false);
-        Alert.alert("✓ Submitted", "Your rating has been submitted. Thank you!");
+        Alert.alert("Submitted", "Your anonymous rating has been submitted. Thank you!");
         setSelectedCourse(null);
         setRating(0);
         setComment("");
@@ -339,8 +332,6 @@ export default function RatingScreen() {
     return (
       <SafeAreaView style={s.container}>
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
-
-
         <ConfirmModal
           visible={showConfirm}
           course={selectedCourse}
@@ -350,16 +341,13 @@ export default function RatingScreen() {
           onCancel={() => setShowConfirm(false)}
           submitting={submitting}
         />
-
         <View style={s.header}>
           <Text style={s.eyebrow}>Feedback</Text>
           <Text style={s.headerTitle}>Rate Your Lecturer</Text>
-          <Text style={s.headerSub}>Choose a course and share your feedback</Text>
+          <Text style={s.headerSub}>Choose a course and share anonymous feedback</Text>
         </View>
-
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           <SectionLabel text="Your Courses" />
-
           {courses.length === 0 ? (
             <EmptyState
               icon=""
@@ -368,7 +356,6 @@ export default function RatingScreen() {
             />
           ) : (
             courses.map((item) => {
-           
               const canRate = attendedCourseIds.has(item.id);
               return (
                 <CourseCard
@@ -381,7 +368,6 @@ export default function RatingScreen() {
               );
             })
           )}
-
           {selectedCourse && (
             <>
               <View style={s.selectedSummary}>
@@ -391,32 +377,29 @@ export default function RatingScreen() {
                   Lecturer: {selectedCourse.lecturerName || "Unknown"}
                 </Text>
               </View>
-
               <SectionLabel text="Your Rating" />
               <View style={s.starCard}>
                 <StarPicker value={rating} onChange={setRating} />
               </View>
-
               <SectionLabel text="Comment (optional)" />
               <TextInput
                 style={s.input}
                 multiline
                 numberOfLines={4}
-                placeholder="Share your feedback…"
+                placeholder="Share your anonymous feedback…"
                 placeholderTextColor={C.muted}
                 value={comment}
                 onChangeText={setComment}
                 textAlignVertical="top"
               />
-
-      
+              <AnonymityNotice />
               <TouchableOpacity
                 style={[s.submitBtn, !rating && { opacity: 0.5 }]}
                 onPress={handleSubmitPress}
                 disabled={!rating}
                 activeOpacity={0.85}
               >
-                <Text style={s.submitText}>Review & Submit →</Text>
+                <Text style={s.submitText}>Submit Anonymous Rating</Text>
               </TouchableOpacity>
             </>
           )}
@@ -425,31 +408,29 @@ export default function RatingScreen() {
     );
   }
 
-
   if (role === "lecturer") {
     const average = lecturerRatingsList.length > 0
       ? (lecturerRatingsList.reduce((sum, r) => sum + r.rating, 0) / lecturerRatingsList.length).toFixed(1)
       : null;
-
     return (
       <SafeAreaView style={s.container}>
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
         <View style={s.header}>
           <Text style={s.eyebrow}>Lecturer Portal</Text>
-          <Text style={s.headerTitle}>My Ratings</Text>
-          <Text style={s.headerSub}>Feedback from your students</Text>
+          <Text style={s.headerTitle}>My Anonymous Ratings</Text>
+          <Text style={s.headerSub}>All feedback is anonymous</Text>
         </View>
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {lecturerRatingsList.length === 0 ? (
             <EmptyState
               icon="⭐"
               title="No Ratings Yet"
-              subtitle="When students rate you, their feedback will appear here."
+              subtitle="When students rate you anonymously, their feedback will appear here."
             />
           ) : (
             <>
               <AverageBlock average={average} count={lecturerRatingsList.length} />
-              <SectionLabel text="Student Feedback" />
+              <SectionLabel text="Anonymous Student Feedback" />
               {lecturerRatingsList.map(item => <RatingCard key={item.id} item={item} />)}
             </>
           )}
@@ -463,7 +444,6 @@ export default function RatingScreen() {
     const averageRating = totalRatings > 0
       ? (allRatings.reduce((sum, r) => sum + r.rating, 0) / totalRatings).toFixed(1)
       : null;
-
     const lecturerMap = {};
     allRatings.forEach(r => {
       if (!lecturerMap[r.lecturerId]) {
@@ -475,14 +455,13 @@ export default function RatingScreen() {
     Object.keys(lecturerMap).forEach(id => {
       lecturerMap[id].average = (lecturerMap[id].total / lecturerMap[id].count).toFixed(1);
     });
-
     return (
       <SafeAreaView style={s.container}>
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
         <View style={s.header}>
           <Text style={s.eyebrow}>{role === "prl" ? "PRL Portal" : "Programme Leader"}</Text>
-          <Text style={s.headerTitle}>All Ratings</Text>
-          <Text style={s.headerSub}>Complete overview of lecturer performance</Text>
+          <Text style={s.headerTitle}>Anonymous Ratings Overview</Text>
+          <Text style={s.headerSub}>All feedback is anonymous</Text>
         </View>
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           <View style={s.statsRow}>
@@ -499,8 +478,7 @@ export default function RatingScreen() {
               <Text style={s.statLabel}>Lecturers</Text>
             </View>
           </View>
-
-          <SectionLabel text="Lecturer Performance" />
+          <SectionLabel text="Lecturer Performance Summary" />
           {Object.keys(lecturerMap).map(id => (
             <View key={id} style={s.lecturerSummaryCard}>
               <Text style={s.lecturerSummaryName}>{lecturerMap[id].name}</Text>
@@ -510,10 +488,9 @@ export default function RatingScreen() {
               </View>
             </View>
           ))}
-
-          <SectionLabel text="All Individual Ratings" />
+          <SectionLabel text="All  Ratings" />
           {allRatings.length === 0 ? (
-            <EmptyState icon="📭" title="No Ratings Yet" subtitle="No feedback submitted yet." />
+            <EmptyState icon="" title="No Ratings Yet" subtitle="No feedbac yet." />
           ) : (
             allRatings.map(item => <RatingCard key={item.id} item={item} />)
           )}
@@ -528,7 +505,6 @@ export default function RatingScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   centered:  { flex: 1, justifyContent: "center", alignItems: "center" },
-
   header: {
     backgroundColor: C.navy,
     paddingTop: 52, paddingBottom: 24, paddingHorizontal: 24,
@@ -539,15 +515,11 @@ const s = StyleSheet.create({
   },
   headerTitle: { fontSize: 26, fontWeight: "700", color: C.white, marginBottom: 4 },
   headerSub:   { fontSize: 13, color: "rgba(255,255,255,0.5)" },
-
   content: { padding: 16, paddingBottom: 40 },
-
   label: {
     fontSize: 11, fontWeight: "600", letterSpacing: 1,
     color: C.muted, textTransform: "uppercase", marginTop: 20, marginBottom: 10,
   },
-
-
   courseCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 16, flexDirection: "row",
@@ -556,8 +528,6 @@ const s = StyleSheet.create({
   courseCardSelected: { borderColor: C.navy, borderLeftWidth: 3, borderLeftColor: C.gold },
   courseCardLocked:   { opacity: 0.7, backgroundColor: "#f8f9fc" },
   courseTitle:        { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 10 },
-
-
   lecturerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   lecturerAvatar: {
     width: 32, height: 32, borderRadius: 16, backgroundColor: C.navy,
@@ -571,21 +541,16 @@ const s = StyleSheet.create({
   },
   codeBadgeText:  { fontSize: 10, fontWeight: "600", color: C.navy, letterSpacing: 0.5 },
   courseLecturer: { fontSize: 11, color: C.muted },
-
-
   lockBanner: {
     backgroundColor: "#fef9ec", borderRadius: 8, padding: 8, marginTop: 10,
     borderWidth: 1, borderColor: "#fde68a",
   },
-  lockText: { fontSize: 11, color: C.amber, fontWeight: "500", textAlign: "center" },
-
+  lockText: { fontSize: 11, color: "#92400e", fontWeight: "500", textAlign: "center" },
   checkCircle: {
     width: 22, height: 22, borderRadius: 11, backgroundColor: C.navy,
     alignItems: "center", justifyContent: "center", marginLeft: 10, flexShrink: 0,
   },
   checkMark: { color: C.white, fontSize: 11, fontWeight: "700" },
-
-  
   selectedSummary: { backgroundColor: C.navy, borderRadius: 12, padding: 16, marginTop: 4 },
   selectedSummaryLabel: {
     fontSize: 10, fontWeight: "600", letterSpacing: 1,
@@ -593,7 +558,6 @@ const s = StyleSheet.create({
   },
   selectedSummaryTitle: { fontSize: 16, fontWeight: "700", color: C.white, marginBottom: 2 },
   selectedSummaryMeta:  { fontSize: 13, color: "rgba(255,255,255,0.6)" },
-
   starCard: {
     backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
     borderColor: C.border, padding: 20, alignItems: "center", marginBottom: 4,
@@ -601,19 +565,14 @@ const s = StyleSheet.create({
   starRow:    { flexDirection: "row", gap: 8 },
   star:       { fontSize: 36, color: "#cfd6e4" },
   starActive: { color: C.gold },
-
- 
   input: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 14, minHeight: 100, fontSize: 14, color: C.text,
   },
-
   submitBtn: {
     backgroundColor: C.navy, padding: 16, borderRadius: 12, marginTop: 20, alignItems: "center",
   },
   submitText: { color: C.white, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
-
-
   emptyCard: {
     backgroundColor: C.empty, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 28, alignItems: "center", marginBottom: 10,
@@ -621,8 +580,6 @@ const s = StyleSheet.create({
   emptyIcon:     { fontSize: 32, marginBottom: 10 },
   emptyTitle:    { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 6, textAlign: "center" },
   emptySubtitle: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 20 },
-
- 
   modalOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center", alignItems: "center", padding: 24,
@@ -655,7 +612,6 @@ const s = StyleSheet.create({
     padding: 14, alignItems: "center",
   },
   modalConfirmText:  { fontSize: 14, fontWeight: "700", color: C.white },
-
   ratingCard: {
     backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
     borderColor: C.border, padding: 16, marginBottom: 10,
@@ -681,8 +637,6 @@ const s = StyleSheet.create({
   miniStarDim:     { color: "#dde1ec" },
   comment:         { fontSize: 13, color: C.text, lineHeight: 20, marginBottom: 6 },
   dateText:        { fontSize: 11, color: C.muted },
-
-
   avgBlock: {
     backgroundColor: C.navy, borderRadius: 12, padding: 20,
     flexDirection: "row", alignItems: "center", gap: 20, marginBottom: 20,
@@ -693,14 +647,12 @@ const s = StyleSheet.create({
   avgStarLit: { color: C.gold },
   avgStarDim: { color: "rgba(255,255,255,0.2)" },
   avgCount:   { fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 },
-
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
   statCard: {
     flex: 1, backgroundColor: C.navy, borderRadius: 12, padding: 16, alignItems: "center",
   },
   statNumber: { fontSize: 24, fontWeight: "700", color: C.white },
   statLabel:  { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4 },
-
   lecturerSummaryCard: {
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 16, marginBottom: 10,
@@ -708,4 +660,18 @@ const s = StyleSheet.create({
   lecturerSummaryName: { fontSize: 16, fontWeight: "700", color: C.text, marginBottom: 8 },
   lecturerStats:       { flexDirection: "row", gap: 16 },
   lecturerStat:        { fontSize: 13, color: C.muted },
+  anonymityNotice: {
+    backgroundColor: "#fef9ec",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  anonymityText: {
+    fontSize: 11,
+    color: "#92400e",
+    lineHeight: 16,
+    textAlign: "center",
+  },
 });

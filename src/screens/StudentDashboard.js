@@ -89,7 +89,7 @@ function TimetableModal({ visible, onClose, timetable, loading }) {
             </View>
           ) : timetable.length === 0 ? (
             <View style={s.modalEmpty}>
-              <Text style={s.modalEmptyIcon}>🗓</Text>
+              <Text style={s.modalEmptyIcon}></Text>
               <Text style={s.modalEmptyTitle}>No Timetable Yet</Text>
               <Text style={s.modalEmptySubtitle}>
                 Your courses will appear here once your programme leader adds them.
@@ -271,7 +271,7 @@ export default function StudentDashboard({ navigation }) {
 
           <View style={s.statStrip}>
             <View style={s.statItem}>
-              <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : "—"}</Text>
+              <Text style={s.statNum}>{isAssigned ? `${attendancePercent}%` : ""}</Text>
               <Text style={s.statMeta}>Attendance</Text>
             </View>
             <View style={s.statDivider} />

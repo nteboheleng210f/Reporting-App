@@ -24,15 +24,14 @@ export default function ReportsScreen() {
   const [feedbackMap, setFeedbackMap] = useState({});
   const [selectedReport, setSelectedReport] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [exportTarget, setExportTarget] = useState(null);
 
-  // Get user role
   const getUserRole = async () => {
     const userRole = await AsyncStorage.getItem("user_role");
     setRole(userRole);
     return userRole;
   };
 
-  // Load reports based on role
   const loadReports = async () => {
     try {
       const response = await api.get("/reports");
@@ -46,7 +45,6 @@ export default function ReportsScreen() {
     }
   };
 
-  // Load pending reports for PRL
   const loadPendingReports = async () => {
     try {
       const response = await api.get("/reports/pending");
@@ -73,15 +71,16 @@ export default function ReportsScreen() {
     }
   };
 
-  // Generic export function
-  const exportReports = async (format) => {
+  const exportSingleReport = async (report, format) => {
     if (exporting) return;
     
     setExporting(true);
     setShowExportModal(false);
     
     try {
-      const endpoint = format === 'excel' ? "/reports/export" : "/reports/export/pdf";
+      const endpoint = format === 'excel' 
+        ? `/reports/export/${report.id}/excel` 
+        : `/reports/export/${report.id}/pdf`;
       const fileExtension = format === 'excel' ? 'xlsx' : 'pdf';
       const mimeType = format === 'excel' 
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -93,9 +92,8 @@ export default function ReportsScreen() {
       });
 
       const date = new Date();
-      const filename = `lecture_reports_${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}.${fileExtension}`;
+      const filename = `${report.courseCode}_report_${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}.${fileExtension}`;
       
-      // For web platform
       if (Platform.OS === 'web') {
         const url = window.URL.createObjectURL(new Blob([response.data], { type: mimeType }));
         const link = document.createElement('a');
@@ -110,7 +108,6 @@ export default function ReportsScreen() {
         return;
       }
       
-      // For mobile platforms
       const fileUri = FileSystem.documentDirectory + filename;
       
       const blobToBase64 = (blob) => {
@@ -131,15 +128,10 @@ export default function ReportsScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      const fileInfo = await FileSystem.getInfoAsync(fileUri);
-      if (!fileInfo.exists) {
-        throw new Error("File was not created successfully");
-      }
-      
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: mimeType,
-          dialogTitle: `Export Lecture Reports as ${format.toUpperCase()}`,
+          dialogTitle: `Export Report as ${format.toUpperCase()}`,
         });
         Alert.alert("Success", `Report exported as ${format.toUpperCase()}`);
       } else {
@@ -147,63 +139,160 @@ export default function ReportsScreen() {
       }
       
     } catch (error) {
-      console.error("Export error details:", error);
-      
-      let errorMessage = `Failed to export as ${format.toUpperCase()}`;
-      if (error.response) {
-        errorMessage = error.response.data?.error || `Server error: ${error.response.status}`;
-      } else if (error.request) {
-        errorMessage = "Network error - please check your connection";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      Alert.alert("Export Error", errorMessage);
+      console.error("Export error:", error);
+      Alert.alert("Export Error", error.response?.data?.error || "Failed to export report");
     } finally {
       setExporting(false);
     }
   };
 
-  // Export Options Modal Component
+  const exportAllReports = async (format) => {
+    if (exporting) return;
+    
+    setExporting(true);
+    setShowExportModal(false);
+    setExportTarget(null);
+    
+    try {
+      const endpoint = format === 'excel' ? "/reports/export/all/excel" : "/reports/export/all/pdf";
+      const fileExtension = format === 'excel' ? 'xlsx' : 'pdf';
+      const mimeType = format === 'excel' 
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/pdf';
+      
+      const response = await api.get(endpoint, {
+        responseType: "blob",
+        timeout: 60000,
+      });
+
+      const date = new Date();
+      const filename = `all_reports_${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}.${fileExtension}`;
+      
+      if (Platform.OS === 'web') {
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: mimeType }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        Alert.alert("Success", `All reports exported as ${format.toUpperCase()}`);
+        setExporting(false);
+        return;
+      }
+      
+      const fileUri = FileSystem.documentDirectory + filename;
+      
+      const blobToBase64 = (blob) => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64String = reader.result.split(',')[1];
+            resolve(base64String);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      };
+      
+      const base64Data = await blobToBase64(response.data);
+      
+      await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: mimeType,
+          dialogTitle: `Export All Reports as ${format.toUpperCase()}`,
+        });
+        Alert.alert("Success", `All reports exported as ${format.toUpperCase()}`);
+      } else {
+        Alert.alert("Success", `Reports saved to ${fileUri}`);
+      }
+      
+    } catch (error) {
+      console.error("Export error:", error);
+      Alert.alert("Export Error", error.response?.data?.error || "Failed to export reports");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const ExportOptionsModal = () => (
     <Modal
       animationType="slide"
       transparent={true}
       visible={showExportModal}
-      onRequestClose={() => setShowExportModal(false)}
+      onRequestClose={() => {
+        setShowExportModal(false);
+        setExportTarget(null);
+      }}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Export Reports</Text>
-          <Text style={styles.modalSubtitle}>Choose export format</Text>
+          <Text style={styles.modalTitle}>Export Report</Text>
+          <Text style={styles.modalSubtitle}>
+            {exportTarget ? `Export: ${exportTarget.courseName}` : "Choose export option"}
+          </Text>
           
           <TouchableOpacity 
             style={styles.modalOption}
-            onPress={() => exportReports('excel')}
+            onPress={() => exportSingleReport(exportTarget, 'excel')}
             disabled={exporting}
           >
             <Text style={styles.modalOptionIcon}>📊</Text>
             <View style={styles.modalOptionTextContainer}>
               <Text style={styles.modalOptionTitle}>Microsoft Excel</Text>
-              <Text style={styles.modalOptionDesc}>Export as .xlsx spreadsheet</Text>
+              <Text style={styles.modalOptionDesc}>Export single report as .xlsx</Text>
             </View>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.modalOption}
-            onPress={() => exportReports('pdf')}
+            onPress={() => exportSingleReport(exportTarget, 'pdf')}
             disabled={exporting}
           >
             <Text style={styles.modalOptionIcon}>📄</Text>
             <View style={styles.modalOptionTextContainer}>
               <Text style={styles.modalOptionTitle}>PDF Document</Text>
-              <Text style={styles.modalOptionDesc}>Export as .pdf document</Text>
+              <Text style={styles.modalOptionDesc}>Export single report as .pdf</Text>
+            </View>
+          </TouchableOpacity>
+          
+          <View style={styles.divider} />
+          
+          <TouchableOpacity 
+            style={styles.modalOption}
+            onPress={() => exportAllReports('excel')}
+            disabled={exporting}
+          >
+            <Text style={styles.modalOptionIcon}>📊</Text>
+            <View style={styles.modalOptionTextContainer}>
+              <Text style={styles.modalOptionTitle}>Export All to Excel</Text>
+              <Text style={styles.modalOptionDesc}>Export all reports as .xlsx</Text>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.modalOption}
+            onPress={() => exportAllReports('pdf')}
+            disabled={exporting}
+          >
+            <Text style={styles.modalOptionIcon}>📄</Text>
+            <View style={styles.modalOptionTextContainer}>
+              <Text style={styles.modalOptionTitle}>Export All to PDF</Text>
+              <Text style={styles.modalOptionDesc}>Export all reports as .pdf</Text>
             </View>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[styles.modalOption, styles.cancelButton]}
-            onPress={() => setShowExportModal(false)}
+            onPress={() => {
+              setShowExportModal(false);
+              setExportTarget(null);
+            }}
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
@@ -212,7 +301,6 @@ export default function ReportsScreen() {
     </Modal>
   );
 
-  // Submit feedback (PRL only)
   const submitFeedback = async (id) => {
     const feedback = feedbackMap[id];
 
@@ -244,12 +332,22 @@ export default function ReportsScreen() {
   const ReportDetails = ({ report, onClose }) => {
     return (
       <ScrollView style={styles.fullView}>
-        <Text style={styles.title}> Full Report</Text>
-
-        <TouchableOpacity onPress={onClose}>
-          <Text style={{ color: "#60a5fa", marginBottom: 10 }}>← Back</Text>
-        </TouchableOpacity>
-
+        <View style={styles.detailHeader}>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={styles.backButton}>← Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.exportDetailBtn}
+            onPress={() => {
+              setExportTarget(report);
+              setShowExportModal(true);
+            }}
+          >
+            <Text style={styles.exportDetailBtnText}>📊 Export</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <Text style={styles.title}>Full Report</Text>
         <Text style={styles.item}>Course: {report.courseName} ({report.courseCode})</Text>
         <Text style={styles.item}>Lecturer: {report.lecturerName}</Text>
         <Text style={styles.item}>Faculty: {report.facultyName}</Text>
@@ -311,7 +409,7 @@ export default function ReportsScreen() {
     return (
       <ScrollView style={styles.container}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}> PRL Review Dashboard</Text>
+          <Text style={styles.title}>PRL Review Dashboard</Text>
           <Text style={styles.subtitle}>Review pending reports</Text>
         </View>
 
@@ -371,11 +469,14 @@ export default function ReportsScreen() {
           
           <TouchableOpacity 
             style={[styles.exportBtn, exporting && styles.exportBtnDisabled]} 
-            onPress={() => setShowExportModal(true)}
+            onPress={() => {
+              setExportTarget(null);
+              setShowExportModal(true);
+            }}
             disabled={exporting}
           >
             <Text style={styles.exportBtnText}>
-              {exporting ? "Exporting..." : "📊 Export"}
+              {exporting ? "Exporting..." : "📊 Export All"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -389,9 +490,20 @@ export default function ReportsScreen() {
               style={styles.card}
               onPress={() => setSelectedReport(r)}
             >
-              <Text style={styles.text}>
-                {r.courseName} ({r.courseCode})
-              </Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.text}>
+                  {r.courseName} ({r.courseCode})
+                </Text>
+                <TouchableOpacity 
+                  style={styles.smallExportBtn}
+                  onPress={() => {
+                    setExportTarget(r);
+                    setShowExportModal(true);
+                  }}
+                >
+                  <Text style={styles.smallExportBtnText}>Export</Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.sub}>Lecturer: {r.lecturerName}</Text>
               <Text style={styles.sub}>Class: {r.className}</Text>
               <Text style={styles.sub}>Topic: {r.topic}</Text>
@@ -419,11 +531,14 @@ export default function ReportsScreen() {
         
         <TouchableOpacity 
           style={[styles.exportBtn, exporting && styles.exportBtnDisabled]} 
-          onPress={() => setShowExportModal(true)}
+          onPress={() => {
+            setExportTarget(null);
+            setShowExportModal(true);
+          }}
           disabled={exporting}
         >
           <Text style={styles.exportBtnText}>
-            {exporting ? "Exporting..." : "📊 Export"}
+            {exporting ? "Exporting..." : "📊 Export All"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -437,9 +552,20 @@ export default function ReportsScreen() {
             style={styles.card}
             onPress={() => setSelectedReport(r)}
           >
-            <Text style={styles.text}>
-              {r.courseName} ({r.courseCode})
-            </Text>
+            <View style={styles.cardHeader}>
+              <Text style={styles.text}>
+                {r.courseName} ({r.courseCode})
+              </Text>
+              <TouchableOpacity 
+                style={styles.smallExportBtn}
+                onPress={() => {
+                  setExportTarget(r);
+                  setShowExportModal(true);
+                }}
+              >
+                <Text style={styles.smallExportBtnText}>Export</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.sub}>Class: {r.className}</Text>
             <Text style={styles.sub}>Topic: {r.topic}</Text>
             <Text style={styles.sub}>Week: {r.week}</Text>
@@ -508,9 +634,27 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 10,
   },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 5,
+  },
+  smallExportBtn: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  smallExportBtnText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "600",
+  },
   text: {
     color: "#60a5fa",
     fontWeight: "bold",
+    flex: 1,
   },
   sub: {
     color: "#cbd5e1",
@@ -550,6 +694,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#0b1220",
     padding: 15,
   },
+  detailHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  backButton: {
+    color: "#60a5fa",
+    fontSize: 16,
+  },
+  exportDetailBtn: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  exportDetailBtnText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 12,
+  },
   item: {
     color: "white",
     marginBottom: 8,
@@ -565,7 +730,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 20,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -588,7 +752,7 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     color: "#94a3b8",
-    fontSize: 14,
+    fontSize: 12,
     textAlign: "center",
     marginBottom: 20,
   },
@@ -630,5 +794,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     flex: 1,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#334155",
+    marginVertical: 10,
   },
 });
