@@ -234,27 +234,21 @@ const exportReportsToExcel = async (req, res) => {
   }
 };
 
-// ─── Export reports to BEAUTIFUL PDF using PDFKit ──────────────────────────────
+// ─── Export reports to PURE PDF using PDFKit ──────────────────────────────────
 const exportReportsToPDF = async (req, res) => {
   try {
-    console.log('Starting beautiful PDF generation...');
+    console.log('Starting PDF generation...');
     
     const snapshot = await db.collection('lectureReports').orderBy('createdAt', 'desc').get();
     const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     console.log(`Found ${reports.length} reports to export`);
 
-    // Create a new PDF document with custom settings
+    // Create a new PDF document
     const doc = new PDFDocument({ 
       margin: 50,
       size: 'A4',
-      layout: 'portrait',
-      info: {
-        Title: 'Lecture Reports Export',
-        Author: 'Lecture Report System',
-        Subject: 'Academic Performance Reports',
-        Keywords: 'lecture, reports, academic'
-      }
+      layout: 'portrait'
     });
     
     // Set response headers
@@ -264,500 +258,258 @@ const exportReportsToPDF = async (req, res) => {
     // Pipe PDF to response
     doc.pipe(res);
     
-    // Register custom fonts (optional - if you have font files)
-    // doc.registerFont('Regular', 'path/to/font.ttf');
-    
-    // Colors
-    const colors = {
-      primary: '#2563eb',
-      secondary: '#3b82f6',
-      success: '#10b981',
-      warning: '#f59e0b',
-      danger: '#ef4444',
-      dark: '#1f2937',
-      gray: '#6b7280',
-      lightGray: '#f3f4f6',
-      border: '#e5e7eb',
-      white: '#ffffff'
-    };
-    
-    // ==================== COVER PAGE ====================
-    doc.fontSize(32)
+    // Add header
+    doc.fontSize(25)
        .font('Helvetica-Bold')
-       .fillColor(colors.primary)
-       .text('LECTURE REPORTS', { align: 'center' })
-       .moveDown(0.5);
-    
-    doc.fontSize(16)
-       .font('Helvetica')
-       .fillColor(colors.gray)
-       .text('Academic Performance & Quality Assurance Report', { align: 'center' })
+       .fillColor('#2563eb')
+       .text('Lecture Reports', { align: 'center' })
        .moveDown(0.5);
     
     doc.fontSize(12)
-       .fillColor(colors.gray)
-       .text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' })
-       .moveDown(2);
-    
-    // Add decorative line
-    doc.strokeColor(colors.primary)
-       .lineWidth(2)
-       .moveTo(100, doc.y)
-       .lineTo(500, doc.y)
-       .stroke()
-       .moveDown(2);
-    
-    // Add logo/icon placeholder
-    doc.fontSize(48)
-       .fillColor(colors.primary)
-       .text('📊', { align: 'center' })
-       .moveDown(1);
-    
-    doc.fontSize(11)
-       .fillColor(colors.gray)
-       .text('This report provides a comprehensive overview of lecture deliveries,', { align: 'center' })
-       .text('attendance tracking, and quality assurance feedback.', { align: 'center' })
-       .moveDown(3);
+       .font('Helvetica')
+       .fillColor('#666666')
+       .text('Academic Performance Reports', { align: 'center' })
+       .moveDown(0.5);
     
     doc.fontSize(10)
-       .fillColor(colors.gray)
-       .text('Confidential Document', { align: 'center', italic: true })
-       .text(`Report ID: LRS-${Date.now()}`, { align: 'center' });
-    
-    doc.addPage();
-    
-    // ==================== TABLE OF CONTENTS ====================
-    doc.fontSize(20)
-       .font('Helvetica-Bold')
-       .fillColor(colors.primary)
-       .text('Table of Contents', { underline: true })
+       .fillColor('#999999')
+       .text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' })
        .moveDown(1);
     
-    let tocY = doc.y;
-    doc.fontSize(11)
-       .font('Helvetica')
-       .fillColor(colors.dark);
-    
-    doc.text('1. Executive Summary', 50, tocY);
-    doc.text('2. Key Statistics', 300, tocY);
-    tocY += 20;
-    
-    doc.text('3. Detailed Reports', 50, tocY);
-    doc.text(`   • Total Reports: ${reports.length}`, 70, tocY + 20);
-    doc.text(`   • Reviewed: ${reports.filter(r => r.status === 'reviewed').length}`, 70, tocY + 40);
-    doc.text(`   • Pending: ${reports.filter(r => r.status === 'pending').length}`, 70, tocY + 60);
-    doc.text(`   • Needs Revision: ${reports.filter(r => r.status === 'needs_revision').length}`, 70, tocY + 80);
-    
-    doc.addPage();
-    
-    // ==================== EXECUTIVE SUMMARY ====================
-    doc.fontSize(20)
-       .font('Helvetica-Bold')
-       .fillColor(colors.primary)
-       .text('Executive Summary', { underline: true })
+    // Add horizontal line
+    doc.strokeColor('#2563eb')
+       .lineWidth(2)
+       .moveTo(50, doc.y)
+       .lineTo(550, doc.y)
+       .stroke()
        .moveDown(1);
     
+    // Calculate statistics
+    const totalReports = reports.length;
+    const reviewedReports = reports.filter(r => r.status === 'reviewed').length;
+    const pendingReports = reports.filter(r => r.status === 'pending').length;
+    const needsRevisionReports = reports.filter(r => r.status === 'needs_revision').length;
     const totalAttendance = reports.reduce((sum, r) => sum + (r.actualPresent || 0), 0);
     const totalStudents = reports.reduce((sum, r) => sum + (r.totalRegistered || 0), 0);
     const avgAttendance = totalStudents > 0 ? ((totalAttendance / totalStudents) * 100).toFixed(1) : 0;
-    const completionRate = reports.length > 0 ? ((reports.filter(r => r.status === 'reviewed').length / reports.length) * 100).toFixed(1) : 0;
+    
+    // Summary section
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .fillColor('#2563eb')
+       .text('Summary Statistics', { underline: true })
+       .moveDown(0.5);
     
     doc.fontSize(11)
        .font('Helvetica')
-       .fillColor(colors.dark)
-       .text(`This report summarizes ${reports.length} lecture deliveries across various courses and departments.`, { align: 'justify' })
-       .moveDown(0.5)
-       .text(`The overall attendance rate stands at ${avgAttendance}%, with ${reports.filter(r => r.status === 'reviewed').length} reports fully reviewed and ${completionRate}% completion rate.`, { align: 'justify' })
-       .moveDown(1);
+       .fillColor('#333333');
     
-    // Key highlights box
-    const boxY = doc.y;
-    doc.rect(50, boxY, 500, 120)
-       .fillColor(colors.lightGray)
-       .fill()
-       .strokeColor(colors.primary)
-       .lineWidth(1)
-       .stroke();
+    // Create a table for statistics
+    const startY = doc.y;
+    let currentY = startY;
     
-    doc.fillColor(colors.primary)
-       .fontSize(12)
+    doc.text(`Total Reports: ${totalReports}`, 50, currentY);
+    doc.text(`Reviewed Reports: ${reviewedReports}`, 250, currentY);
+    doc.text(`Pending Reports: ${pendingReports}`, 450, currentY);
+    currentY += 20;
+    
+    doc.text(`Need Revision: ${needsRevisionReports}`, 50, currentY);
+    doc.text(`Average Attendance: ${avgAttendance}%`, 250, currentY);
+    currentY += 30;
+    
+    doc.moveDown(1);
+    
+    // Detailed Reports Section
+    doc.fontSize(16)
        .font('Helvetica-Bold')
-       .text('KEY HIGHLIGHTS', 70, boxY + 15);
-    
-    doc.fontSize(10)
-       .font('Helvetica')
-       .fillColor(colors.dark)
-       .text(`• Total Lectures Delivered: ${reports.length}`, 70, boxY + 40)
-       .text(`• Average Attendance Rate: ${avgAttendance}%`, 70, boxY + 60)
-       .text(`• Quality Review Completion: ${completionRate}%`, 70, boxY + 80)
-       .text(`• Pending Reviews: ${reports.filter(r => r.status === 'pending').length}`, 70, boxY + 100);
-    
-    doc.moveDown(4);
-    
-    // ==================== STATISTICS SECTION ====================
-    doc.addPage();
-    doc.fontSize(20)
-       .font('Helvetica-Bold')
-       .fillColor(colors.primary)
-       .text('Key Performance Statistics', { underline: true })
-       .moveDown(1);
-    
-    // Statistics cards layout
-    const stats = [
-      { label: 'Total Reports', value: reports.length, icon: '📋', color: colors.primary },
-      { label: 'Reviewed', value: reports.filter(r => r.status === 'reviewed').length, icon: '✅', color: colors.success },
-      { label: 'Pending', value: reports.filter(r => r.status === 'pending').length, icon: '⏳', color: colors.warning },
-      { label: 'Needs Revision', value: reports.filter(r => r.status === 'needs_revision').length, icon: '🔄', color: colors.danger },
-      { label: 'Avg Attendance', value: `${avgAttendance}%`, icon: '👥', color: colors.primary },
-      { label: 'Total Students', value: totalStudents, icon: '🎓', color: colors.secondary }
-    ];
-    
-    let statsY = doc.y;
-    stats.forEach((stat, index) => {
-      const col = index % 2;
-      const x = col === 0 ? 50 : 310;
-      const y = statsY + Math.floor(index / 2) * 80;
-      
-      // Card background
-      doc.rect(x, y, 240, 70)
-         .fillColor(colors.lightGray)
-         .fill()
-         .strokeColor(colors.border)
-         .stroke();
-      
-      // Icon
-      doc.fontSize(28)
-         .fillColor(stat.color)
-         .text(stat.icon, x + 15, y + 15);
-      
-      // Label
-      doc.fontSize(9)
-         .font('Helvetica')
-         .fillColor(colors.gray)
-         .text(stat.label, x + 60, y + 15);
-      
-      // Value
-      doc.fontSize(24)
-         .font('Helvetica-Bold')
-         .fillColor(stat.color)
-         .text(String(stat.value), x + 60, y + 30);
-    });
-    
-    doc.moveDown(5);
-    
-    // ==================== DETAILED REPORTS ====================
-    doc.addPage();
-    doc.fontSize(20)
-       .font('Helvetica-Bold')
-       .fillColor(colors.primary)
-       .text('Detailed Lecture Reports', { underline: true })
-       .moveDown(1);
+       .fillColor('#2563eb')
+       .text('Detailed Reports', { underline: true })
+       .moveDown(0.5);
     
     // Loop through each report
     reports.forEach((report, index) => {
       // Check if we need a new page
-      if (doc.y > 680) {
+      if (doc.y > 700) {
         doc.addPage();
-        doc.fontSize(16)
-           .font('Helvetica-Bold')
-           .fillColor(colors.primary)
-           .text('Detailed Reports (continued)', { underline: true })
-           .moveDown(1);
       }
       
-      // Report header with gradient-like effect
-      const headerY = doc.y;
-      doc.rect(50, headerY, 500, 35)
-         .fillColor(colors.primary)
-         .fill();
-      
-      doc.fillColor(colors.white)
-         .fontSize(12)
+      // Report header with index
+      doc.fontSize(14)
          .font('Helvetica-Bold')
-         .text(`${index + 1}. ${report.courseName || 'N/A'} (${report.courseCode || 'N/A'})`, 60, headerY + 10);
+         .fillColor('#2563eb')
+         .text(`${index + 1}. ${report.courseName || 'N/A'} (${report.courseCode || 'N/A'})`)
+         .moveDown(0.3);
       
-      doc.moveDown(2);
-      
-      // Two-column layout for report details
-      const startX = 50;
-      const col1X = 60;
-      const col2X = 310;
-      let currentY = doc.y;
-      let lineHeight = 22;
-      
-      // Column 1
+      // Report details in two columns
       doc.fontSize(10)
-         .font('Helvetica-Bold')
-         .fillColor(colors.gray);
+         .font('Helvetica')
+         .fillColor('#333333');
       
-      doc.text('Course Information', col1X, currentY);
-      currentY += 18;
+      // Left column
+      let leftX = 50;
+      let rightX = 300;
+      let lineHeight = 18;
+      let yPos = doc.y;
       
-      doc.font('Helvetica')
-         .fillColor(colors.dark);
+      doc.text(`Lecturer:`, leftX, yPos);
+      doc.text(`${report.lecturerName || 'N/A'}`, 120, yPos);
       
-      doc.text('Course Name:', col1X, currentY);
-      doc.text(report.courseName || 'N/A', col1X + 100, currentY);
-      currentY += lineHeight;
+      doc.text(`Faculty:`, leftX, yPos + lineHeight);
+      doc.text(`${report.facultyName || 'N/A'}`, 120, yPos + lineHeight);
       
-      doc.text('Course Code:', col1X, currentY);
-      doc.text(report.courseCode || 'N/A', col1X + 100, currentY);
-      currentY += lineHeight;
+      doc.text(`Class:`, leftX, yPos + (lineHeight * 2));
+      doc.text(`${report.className || 'N/A'}`, 120, yPos + (lineHeight * 2));
       
-      doc.text('Faculty:', col1X, currentY);
-      doc.text(report.facultyName || 'N/A', col1X + 100, currentY);
-      currentY += lineHeight;
+      doc.text(`Topic:`, leftX, yPos + (lineHeight * 3));
+      doc.text(`${report.topic || 'N/A'}`, 120, yPos + (lineHeight * 3));
       
-      doc.text('Class:', col1X, currentY);
-      doc.text(report.className || 'N/A', col1X + 100, currentY);
-      currentY += lineHeight;
+      doc.text(`Week:`, rightX, yPos);
+      doc.text(`${report.week || 'N/A'}`, 350, yPos);
       
-      // Column 2
-      let col2Y = doc.y;
+      doc.text(`Date:`, rightX, yPos + lineHeight);
+      doc.text(`${report.date || 'N/A'}`, 350, yPos + lineHeight);
       
-      doc.font('Helvetica-Bold')
-         .fillColor(colors.gray);
+      doc.text(`Venue:`, rightX, yPos + (lineHeight * 2));
+      doc.text(`${report.venue || 'N/A'}`, 350, yPos + (lineHeight * 2));
       
-      doc.text('Lecture Details', col2X, col2Y);
-      col2Y += 18;
+      doc.text(`Time:`, rightX, yPos + (lineHeight * 3));
+      doc.text(`${report.scheduledTime || 'N/A'}`, 350, yPos + (lineHeight * 3));
       
-      doc.font('Helvetica')
-         .fillColor(colors.dark);
+      let newY = yPos + (lineHeight * 4);
       
-      doc.text('Lecturer:', col2X, col2Y);
-      doc.text(report.lecturerName || 'N/A', col2X + 80, col2Y);
-      col2Y += lineHeight;
-      
-      doc.text('Topic:', col2X, col2Y);
-      doc.text(report.topic || 'N/A', col2X + 80, col2Y);
-      col2Y += lineHeight;
-      
-      doc.text('Week:', col2X, col2Y);
-      doc.text(report.week || 'N/A', col2X + 80, col2Y);
-      col2Y += lineHeight;
-      
-      doc.text('Date:', col2X, col2Y);
-      doc.text(report.date || 'N/A', col2X + 80, col2Y);
-      col2Y += lineHeight;
-      
-      doc.text('Venue:', col2X, col2Y);
-      doc.text(report.venue || 'N/A', col2X + 80, col2Y);
-      col2Y += lineHeight;
-      
-      doc.text('Time:', col2X, col2Y);
-      doc.text(report.scheduledTime || 'N/A', col2X + 80, col2Y);
-      col2Y += lineHeight;
-      
-      // Set Y position to the maximum of both columns
-      doc.y = Math.max(currentY, col2Y) + 10;
-      
-      // Attendance section with visual bar
+      // Attendance with visual bar
       const attendancePercent = report.totalRegistered > 0 
         ? (report.actualPresent / report.totalRegistered) * 100 
         : 0;
       
-      doc.font('Helvetica-Bold')
-         .fillColor(colors.gray)
-         .text('Attendance Summary', 50, doc.y);
-      doc.moveDown(0.5);
+      doc.text(`Attendance:`, leftX, newY);
+      doc.text(`${report.actualPresent || 0}/${report.totalRegistered || 0} (${attendancePercent.toFixed(1)}%)`, 120, newY);
       
-      // Attendance numbers
-      doc.font('Helvetica')
-         .fillColor(colors.dark)
-         .text(`Present: ${report.actualPresent || 0} students`, 60, doc.y);
-      doc.text(`Registered: ${report.totalRegistered || 0} students`, 250, doc.y);
-      doc.text(`Rate: ${attendancePercent.toFixed(1)}%`, 400, doc.y);
-      doc.moveDown(0.5);
-      
-      // Visual attendance bar
-      const barY = doc.y;
-      const barWidth = 500;
-      const barHeight = 20;
-      
-      doc.rect(50, barY, barWidth, barHeight)
+      // Draw attendance bar
+      const barWidth = 200;
+      const barHeight = 8;
+      doc.rect(120, newY + 12, barWidth, barHeight)
          .fillColor('#e5e7eb')
          .fill();
-      
-      doc.rect(50, barY, (attendancePercent / 100) * barWidth, barHeight)
-         .fillColor(attendancePercent >= 75 ? colors.success : attendancePercent >= 50 ? colors.warning : colors.danger)
+      doc.rect(120, newY + 12, (attendancePercent / 100) * barWidth, barHeight)
+         .fillColor('#10b981')
          .fill();
       
-      // Percentage text on bar
-      doc.fillColor(attendancePercent > 50 ? colors.white : colors.dark)
-         .fontSize(10)
-         .font('Helvetica-Bold')
-         .text(`${attendancePercent.toFixed(1)}%`, 50 + barWidth/2 - 15, barY + 5);
+      newY += 25;
       
-      doc.moveDown(2);
-      
-      // Status badge
-      let statusColor = colors.warning;
-      let statusText = 'Pending Review';
-      let statusIcon = '⏳';
-      
+      // Status
+      let statusColor = '#f59e0b';
+      let statusText = 'Pending';
       if (report.status === 'reviewed') {
-        statusColor = colors.success;
-        statusText = 'Approved';
-        statusIcon = '✅';
+        statusColor = '#10b981';
+        statusText = 'Reviewed';
       } else if (report.status === 'needs_revision') {
-        statusColor = colors.danger;
+        statusColor = '#ef4444';
         statusText = 'Needs Revision';
-        statusIcon = '🔄';
       }
       
-      doc.rect(50, doc.y, 150, 30)
-         .fillColor(statusColor)
-         .fill();
+      doc.text(`Status:`, leftX, newY);
+      doc.fillColor(statusColor)
+         .text(statusText, 120, newY);
+      doc.fillColor('#333333');
       
-      doc.fillColor(colors.white)
-         .fontSize(10)
-         .font('Helvetica-Bold')
-         .text(`${statusIcon} ${statusText}`, 60, doc.y + 8);
-      
-      doc.moveDown(2);
+      newY += 20;
       
       // Learning Outcomes
       if (report.outcomes) {
-        doc.font('Helvetica-Bold')
-           .fillColor(colors.primary)
-           .text('🎯 Learning Outcomes', 50, doc.y);
-        doc.moveDown(0.3);
-        
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .text('Learning Outcomes:', leftX, newY);
         doc.font('Helvetica')
            .fontSize(9)
-           .fillColor(colors.dark)
-           .text(report.outcomes, 60, doc.y, {
-             width: 490,
-             align: 'justify'
-           });
-        doc.moveDown(1);
+           .text(report.outcomes, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
       
       // Recommendations
       if (report.recommendations) {
-        doc.font('Helvetica-Bold')
-           .fillColor(colors.primary)
-           .text('💡 Recommendations', 50, doc.y);
-        doc.moveDown(0.3);
-        
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .text('Recommendations:', leftX, newY);
         doc.font('Helvetica')
            .fontSize(9)
-           .fillColor(colors.dark)
-           .text(report.recommendations, 60, doc.y, {
-             width: 490,
-             align: 'justify'
-           });
-        doc.moveDown(1);
+           .text(report.recommendations, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
       
-      // PRL Feedback box
+      // PRL Feedback
       if (report.prlFeedback) {
-        const feedbackY = doc.y;
-        doc.rect(50, feedbackY, 500, 50)
-           .fillColor('#eff6ff')
-           .fill()
-           .strokeColor(colors.primary)
-           .lineWidth(1)
-           .stroke();
-        
-        doc.font('Helvetica-Bold')
-           .fontSize(9)
-           .fillColor(colors.primary)
-           .text('📝 PRL Feedback', 60, feedbackY + 8);
-        
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .fillColor('#2563eb')
+           .text('PRL Feedback:', leftX, newY);
         doc.font('Helvetica')
            .fontSize(9)
-           .fillColor(colors.dark)
-           .text(report.prlFeedback, 60, feedbackY + 25, {
-             width: 470,
-             align: 'justify'
-           });
-        
-        doc.moveDown(2);
+           .fillColor('#333333')
+           .text(report.prlFeedback, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
       
-      // Revision Notes box
+      // Revision Notes
       if (report.revisionNotes) {
-        const revisionY = doc.y;
-        doc.rect(50, revisionY, 500, 50)
-           .fillColor('#fef2f2')
-           .fill()
-           .strokeColor(colors.danger)
-           .lineWidth(1)
-           .stroke();
-        
-        doc.font('Helvetica-Bold')
-           .fontSize(9)
-           .fillColor(colors.danger)
-           .text('🔄 Revision Notes', 60, revisionY + 8);
-        
+        if (newY > 650) {
+          doc.addPage();
+          newY = 50;
+        }
+        doc.fontSize(10)
+           .font('Helvetica-Bold')
+           .fillColor('#ef4444')
+           .text('Revision Notes:', leftX, newY);
         doc.font('Helvetica')
            .fontSize(9)
-           .fillColor(colors.dark)
-           .text(report.revisionNotes, 60, revisionY + 25, {
-             width: 470,
-             align: 'justify'
-           });
-        
-        doc.moveDown(2);
+           .fillColor('#333333')
+           .text(report.revisionNotes, leftX + 100, newY, { width: 400 })
+           .moveDown(0.5);
+        newY = doc.y + 10;
       }
       
-      // Separator line
-      doc.strokeColor(colors.border)
+      // Separator line between reports
+      doc.moveDown(0.5)
+         .strokeColor('#e5e7eb')
          .lineWidth(0.5)
-         .moveTo(50, doc.y)
-         .lineTo(550, doc.y)
-         .stroke();
-      
-      doc.moveDown(1);
+         .moveTo(50, newY + 10)
+         .lineTo(550, newY + 10)
+         .stroke()
+         .moveDown(1);
     });
     
-    // ==================== FOOTER WITH PAGE NUMBERS ====================
+    // Add footer
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
-      
-      // Footer line
-      doc.strokeColor(colors.border)
-         .lineWidth(0.5)
-         .moveTo(50, doc.page.height - 40)
-         .lineTo(550, doc.page.height - 40)
-         .stroke();
-      
-      // Footer text
       doc.fontSize(8)
-         .font('Helvetica')
-         .fillColor(colors.gray)
+         .fillColor('#999999')
          .text(
-           'Lecture Report System • Quality Assurance Document',
+           `Generated by Lecture Report System • Page ${i + 1} of ${pageCount}`,
            50,
-           doc.page.height - 35,
+           doc.page.height - 50,
            { align: 'center', width: 500 }
          );
-      
-      doc.fontSize(8)
-         .text(
-           `Page ${i + 1} of ${pageCount}`,
-           50,
-           doc.page.height - 25,
-           { align: 'center', width: 500 }
-         );
-      
-      // Add timestamp on first page footer
-      if (i === 0) {
-        doc.fontSize(7)
-           .text(
-             `Generated: ${new Date().toLocaleString()} | Report ID: LRS-${Date.now()}`,
-             50,
-             doc.page.height - 15,
-             { align: 'center', width: 500 }
-           );
-      }
     }
     
-  
+    // Finalize PDF
     doc.end();
-    console.log('Beautiful PDF generated successfully');
+    console.log('PDF generated successfully');
     
   } catch (error) {
     console.error('PDF Export error:', error);
