@@ -92,7 +92,7 @@ export default function ReportsScreen() {
       });
 
       const date = new Date();
-      const filename = `${report.courseCode}_report_${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}.${fileExtension}`;
+      const filename = `${report.courseCode}_report_week${report.week}.${fileExtension}`;
       
       if (Platform.OS === 'web') {
         const url = window.URL.createObjectURL(new Blob([response.data], { type: mimeType }));
@@ -150,8 +150,6 @@ export default function ReportsScreen() {
     if (exporting) return;
     
     setExporting(true);
-    setShowExportModal(false);
-    setExportTarget(null);
     
     try {
       const endpoint = format === 'excel' ? "/reports/export/all/excel" : "/reports/export/all/pdf";
@@ -220,7 +218,7 @@ export default function ReportsScreen() {
     }
   };
 
-  const ExportOptionsModal = () => (
+  const SingleExportModal = () => (
     <Modal
       animationType="slide"
       transparent={true}
@@ -234,7 +232,7 @@ export default function ReportsScreen() {
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Export Report</Text>
           <Text style={styles.modalSubtitle}>
-            {exportTarget ? `Export: ${exportTarget.courseName}` : "Choose export option"}
+            {exportTarget?.courseName}
           </Text>
           
           <TouchableOpacity 
@@ -245,7 +243,7 @@ export default function ReportsScreen() {
             <Text style={styles.modalOptionIcon}>📊</Text>
             <View style={styles.modalOptionTextContainer}>
               <Text style={styles.modalOptionTitle}>Microsoft Excel</Text>
-              <Text style={styles.modalOptionDesc}>Export single report as .xlsx</Text>
+              <Text style={styles.modalOptionDesc}>Export as .xlsx spreadsheet</Text>
             </View>
           </TouchableOpacity>
           
@@ -257,33 +255,7 @@ export default function ReportsScreen() {
             <Text style={styles.modalOptionIcon}>📄</Text>
             <View style={styles.modalOptionTextContainer}>
               <Text style={styles.modalOptionTitle}>PDF Document</Text>
-              <Text style={styles.modalOptionDesc}>Export single report as .pdf</Text>
-            </View>
-          </TouchableOpacity>
-          
-          <View style={styles.divider} />
-          
-          <TouchableOpacity 
-            style={styles.modalOption}
-            onPress={() => exportAllReports('excel')}
-            disabled={exporting}
-          >
-            <Text style={styles.modalOptionIcon}>📊</Text>
-            <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Export All to Excel</Text>
-              <Text style={styles.modalOptionDesc}>Export all reports as .xlsx</Text>
-            </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.modalOption}
-            onPress={() => exportAllReports('pdf')}
-            disabled={exporting}
-          >
-            <Text style={styles.modalOptionIcon}>📄</Text>
-            <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Export All to PDF</Text>
-              <Text style={styles.modalOptionDesc}>Export all reports as .pdf</Text>
+              <Text style={styles.modalOptionDesc}>Export as .pdf document</Text>
             </View>
           </TouchableOpacity>
           
@@ -400,7 +372,7 @@ export default function ReportsScreen() {
           report={selectedReport}
           onClose={() => setSelectedReport(null)}
         />
-        <ExportOptionsModal />
+        <SingleExportModal />
       </>
     );
   }
@@ -456,7 +428,7 @@ export default function ReportsScreen() {
             </View>
           ))
         )}
-        <ExportOptionsModal />
+        <SingleExportModal />
       </ScrollView>
     );
   }
@@ -467,18 +439,27 @@ export default function ReportsScreen() {
         <View style={styles.headerRow}>
           <Text style={styles.title}>PL Final Reports</Text>
           
-          <TouchableOpacity 
-            style={[styles.exportBtn, exporting && styles.exportBtnDisabled]} 
-            onPress={() => {
-              setExportTarget(null);
-              setShowExportModal(true);
-            }}
-            disabled={exporting}
-          >
-            <Text style={styles.exportBtnText}>
-              {exporting ? "Exporting..." : "📊 Export All"}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={[styles.exportAllBtn, exporting && styles.exportBtnDisabled]} 
+              onPress={() => exportAllReports('excel')}
+              disabled={exporting}
+            >
+              <Text style={styles.exportAllBtnText}>
+                {exporting ? "..." : "📊 All Excel"}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.exportAllBtn, exporting && styles.exportBtnDisabled]} 
+              onPress={() => exportAllReports('pdf')}
+              disabled={exporting}
+            >
+              <Text style={styles.exportAllBtnText}>
+                {exporting ? "..." : "📄 All PDF"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {reports.length === 0 ? (
@@ -519,7 +500,7 @@ export default function ReportsScreen() {
             </TouchableOpacity>
           ))
         )}
-        <ExportOptionsModal />
+        <SingleExportModal />
       </ScrollView>
     );
   }
@@ -529,18 +510,27 @@ export default function ReportsScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.title}>Reports</Text>
         
-        <TouchableOpacity 
-          style={[styles.exportBtn, exporting && styles.exportBtnDisabled]} 
-          onPress={() => {
-            setExportTarget(null);
-            setShowExportModal(true);
-          }}
-          disabled={exporting}
-        >
-          <Text style={styles.exportBtnText}>
-            {exporting ? "Exporting..." : "📊 Export All"}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            style={[styles.exportAllBtn, exporting && styles.exportBtnDisabled]} 
+            onPress={() => exportAllReports('excel')}
+            disabled={exporting}
+          >
+            <Text style={styles.exportAllBtnText}>
+              {exporting ? "..." : "📊 All Excel"}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.exportAllBtn, exporting && styles.exportBtnDisabled]} 
+            onPress={() => exportAllReports('pdf')}
+            disabled={exporting}
+          >
+            <Text style={styles.exportAllBtnText}>
+              {exporting ? "..." : "📄 All PDF"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {reports.length === 0 ? (
@@ -580,7 +570,7 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         ))
       )}
-      <ExportOptionsModal />
+      <SingleExportModal />
     </ScrollView>
   );
 }
@@ -603,6 +593,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
+  headerButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
   title: {
     color: "white",
     fontSize: 22,
@@ -613,20 +607,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 10,
   },
-  exportBtn: {
+  exportAllBtn: {
     backgroundColor: "#2563eb",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
+  },
+  exportAllBtnText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 12,
   },
   exportBtnDisabled: {
     backgroundColor: "#475569",
     opacity: 0.7,
-  },
-  exportBtnText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 13,
   },
   card: {
     backgroundColor: "#111c3a",
@@ -794,10 +788,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     flex: 1,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#334155",
-    marginVertical: 10,
   },
 });
